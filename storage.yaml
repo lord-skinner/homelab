@@ -1,0 +1,13 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hdd1-storage
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hdd2-storage
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer

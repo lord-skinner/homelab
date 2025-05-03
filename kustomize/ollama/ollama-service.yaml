@@ -9,4 +9,4 @@ spec:
     - protocol: TCP
       port: 11434
       targetPort: 11434
-  type: ClusterIP # Change to NodePort or LoadBalancer if external access is needed
+  type: ClusterIP

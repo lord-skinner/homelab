@@ -9,4 +9,5 @@ spec:
     - protocol: TCP
       port: 11434
       targetPort: 11434
-  type: ClusterIP
+      nodePort: 31434
+  type: NodePort

@@ -23,31 +23,16 @@ spec:
       containers:
         - env:
             - name: DATABASE_URL
-              value: postgresql://postgres:mysecretpassword@postgres:5432/postgres
-            - name: NEXTAUTH_SECRET
-              value: my_ultra_secure_nextauth_secret
-            - name: NODE_ENV
-              value: production
+              value: postgresql://postgres:mysecretpassword@postgres:5440/postgres
           image: blinkospace/blinko:latest
-          livenessProbe:
-            exec:
-              command:
-                - curl
-                - -f
-                - http://blinko:1111/
-            failureThreshold: 5
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 10
           name: blinko
           resources:
             limits:
               cpu: "1"
-              memory: "512Mi"
+              memory: "1024Mi"
             requests:
-              cpu: "200m"
-              memory: "256Mi"
+              cpu: "1"
+              memory: "1024Mi"
           ports:
             - containerPort: 1111
-              protocol: TCP
       restartPolicy: Always

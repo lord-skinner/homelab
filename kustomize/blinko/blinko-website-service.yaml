@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml
+    kompose.version: 1.35.0 (9532ceef3)
+  labels:
+    io.kompose.service: blinko
+  name: blinko
+spec:
+  ports:
+    - name: "1111"
+      port: 1111
+      targetPort: 1111
+  selector:
+    io.kompose.service: blinko

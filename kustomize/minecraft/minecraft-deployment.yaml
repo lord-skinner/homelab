@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minecraft-server
+  labels:
+    app: minecraft
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minecraft
+  template:
+    metadata:
+      labels:
+        app: minecraft
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
+      - name: minecraft
+        image: itzg/minecraft-server:latest
+        ports:
+        - containerPort: 25565
+        env:
+        - name: EULA
+          value: "TRUE"
+        - name: MEMORY
+          value: "2G"
+        volumeMounts:
+        - mountPath: /data
+          name: minecraft-data
+        resources:
+          requests:
+            memory: "1G"
+            cpu: "500m"
+          limits:
+            memory: "2G"
+            cpu: "1000m"
+      volumes:
+      - name: minecraft-data
+        persistentVolumeClaim:
+          claimName: minecraft-pvc

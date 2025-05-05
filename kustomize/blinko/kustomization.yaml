@@ -4,9 +4,4 @@ kind: Kustomization
 namespace: blinko
 
 resources:
-  - blinko-website-deployment.yaml
-  - blinko-website-service.yaml
   - namespace.yaml
-  - postgres-deployment.yaml
-  - postgres-service.yaml
-  - postgres-pvc.yaml

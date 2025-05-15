@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations: {}
+  name: ollama
+  namespace: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+      - env:
+        - name: OLLAMA_CONTEXT_LENGTH
+          value: "8192"
+        - name: OLLAMA_KEEP_ALIVE
+          value: 6h
+        - name: OLLAMA_GPU_COUNT
+          value: "1"
+        image: ollama/ollama
+        name: ollama
+        ports:
+        - containerPort: 11434
+          name: http
+          protocol: TCP
+        - containerPort: 11434
+          name: grpc
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "1"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - mountPath: /root/.ollama/models
+          name: ollama
+      nodeSelector:
+        accelerator: nvidia-gpu
+      runtimeClassName: nvidia
+      volumes:
+      - name: ollama
+        persistentVolumeClaim:
+          claimName: ollama

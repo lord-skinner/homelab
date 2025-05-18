@@ -10,9 +10,3 @@ spec:
     nfs.server: 10.0.0.23
     nfs.path: /mnt/raid
     storageClass.name: nfs-raid
-    storageClass.pathPattern: "${.PVC.namespace}/${.PVC.name}"
-    storageClass.onDelete: "retain"
-    nfs.mountOptions: "nolock,noexec,soft,timeo=1800,retrans=5"
-    securityContext.enabled: "true"
-    securityContext.fsGroup: 1000
-    securityContext.runAsUser: 1000

@@ -1,10 +1,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ollama-storage
+  name: postgres-pvc
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: raid-storage
   resources:
     requests:
-      storage: 100Gi
+      storage: 256Mi

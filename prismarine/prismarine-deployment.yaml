@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prismarine-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prismarine
+  template:
+    metadata:
+      labels:
+        app: prismarine
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
+      - name: client
+        image: itzg/minecraft-server:latest
+        resources:
+          requests:
+            memory: "4Gi"  # 4GB
+            cpu: "2000m"  # 2 CPU cores
+          limits:
+            memory: "8Gi" # 8GB
+            cpu: "4000m"   # 4 CPU cores
+        ports:
+        - containerPort: 25575
+        env:
+        - name: EULA
+          value: "TRUE"

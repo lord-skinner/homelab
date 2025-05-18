@@ -17,36 +17,38 @@ spec:
       nodeSelector:
         accelerator: nvidia-gpu
       runtimeClassName: nvidia
-      initContainers:
-      - name: init-permissions
-        image: busybox
-        command: ["sh", "-c", "chown -R 1000:1000 /root/.ollama/models && chmod -R 755 /root/.ollama/models"]
-        volumeMounts:
-        - name: ollama-storage
-          mountPath: /root/.ollama/models
       containers:
       - name: ollama
         image: ollama/ollama
         resources:
           limits:
-            nvidia.com/gpu: "1"
             cpu: "1"
-            memory: "4Gi"
+            memory: "2Gi"
+            nvidia.com/gpu: "1"
           requests:
             cpu: "1"
-            memory: "4Gi"
+            memory: "2Gi"
             nvidia.com/gpu: "1"
         env:
         - name: OLLAMA_CONTEXT_LENGTH
           value: "8192"
         - name: OLLAMA_KEEP_ALIVE
           value: "6h"
+        - name: OLLAMA_GPU_COUNT
+          value: "1"
+        # - name: OLLAMA_SCHED_SPREAD
+          # value: "1"
         ports:
-        - containerPort: 11434
+        - name: http
+          containerPort: 11434
+          protocol: TCP
+        - name: grpc
+          containerPort: 11434
+          protocol: TCP
         volumeMounts:
-        - name: ollama-storage
+        - name: ollama
           mountPath: /root/.ollama/models
       volumes:
-      - name: ollama-storage
+      - name: ollama
         persistentVolumeClaim:
-          claimName: ollama-storage
+          claimName: ollama

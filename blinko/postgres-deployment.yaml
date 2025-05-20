@@ -21,8 +21,8 @@ spec:
             - name: POSTGRES_USER
               value: postgres
             - name: TZ
-              value: Asia/Shanghai
-          image: postgres:14
+              value: America/Chicago
+          image: postgres:16
           livenessProbe:
             exec:
               command:

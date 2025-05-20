@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: n8n
+  namespace: postgres
 spec:
   replicas: 1
   selector:
@@ -26,21 +26,38 @@ spec:
               memory: "512Mi"
               cpu: "500m"
           env:
-            - name: POSTGRES_USER
+            # n8n
+            - name: N8N_POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: POSTGRES_USER
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: POSTGRES_PASSWORD
-            - name: POSTGRES_DB
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
+                  name: postgres-secrets
                   key: POSTGRES_DB
+            - name: N8N_POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: N8N_POSTGRES_USER
+            - name: N8N_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: N8N_POSTGRES_PASSWORD
+            # blinko
+            - name: BLINKO_POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_DB
+            - name: BLINKO_POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: BLINKO_POSTGRES_USER
+            - name: BLINKO_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: BLINKO_POSTGRES_PASSWORD
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data

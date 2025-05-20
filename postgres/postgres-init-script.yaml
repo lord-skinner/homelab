@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-script
+data:
+  init-data.sh: |
+    #!/bin/bash
+    set -e;
+
+
+    # Function to create user and grant privileges if env vars are set
+    create_user_and_grant() {
+      local db_var="$1"
+      local user_var="$2"
+      local pass_var="$3"
+
+      local db="${!db_var}"
+      local user="${!user_var}"
+      local pass="${!pass_var}"
+
+      if [ -n "$db" ] && [ -n "$user" ] && [ -n "$pass" ]; then
+        echo "Creating user $user for database $db..."
+        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$db" <<-EOSQL
+          CREATE USER $user WITH PASSWORD '$pass';
+          GRANT ALL PRIVILEGES ON DATABASE $db TO $user;
+          GRANT CREATE ON SCHEMA public TO $user;
+        EOSQL
+      else
+        echo "SETUP INFO: Missing env vars for $user_var"
+      fi
+    }
+
+    # Create users for each app
+    create_user_and_grant N8N_POSTGRES_DB N8N_POSTGRES_USER N8N_POSTGRES_PASSWORD
+    create_user_and_grant BLINKO_POSTGRES_DB BLINKO_POSTGRES_USER BLINKO_POSTGRES_PASSWORD

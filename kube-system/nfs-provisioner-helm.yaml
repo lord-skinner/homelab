@@ -1,12 +1,13 @@
-apiVersion: helm.cattle.io/v1
-kind: HelmChart
-metadata:
-  name: nfs-provisioner
-  namespace: kube-system
-spec:
-  chart: nfs-subdir-external-provisioner
-  repo: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
-  set:
-    nfs.server: 10.0.0.23
-    nfs.path: /mnt/raid
-    storageClass.name: nfs-raid
+# Temporarily disabled until storage node is restored
+# apiVersion: helm.cattle.io/v1
+# kind: HelmChart
+# metadata:
+#   name: nfs-provisioner
+#   namespace: kube-system
+# spec:
+#   chart: nfs-subdir-external-provisioner
+#   repo: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+#   set:
+#     nfs.server: 10.0.0.23
+#     nfs.path: /mnt/raid
+#     storageClass.name: nfs-raid

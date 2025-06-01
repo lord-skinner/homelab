@@ -52,5 +52,4 @@ spec:
           mountPath: /root/.ollama/models
       volumes:
       - name: ollama
-        persistentVolumeClaim:
-          claimName: ollama
+        emptyDir: {}

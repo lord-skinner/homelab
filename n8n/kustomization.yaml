@@ -8,7 +8,6 @@ resources:
   - n8n-service.yaml
   - postgres-deployment.yaml
   - postgres-init-script.yaml
-  - postgres-pvc.yaml
   - postgres-service.yaml
 
 secretGenerator:

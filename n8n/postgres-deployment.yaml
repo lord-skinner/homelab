@@ -66,8 +66,7 @@ spec:
               subPath: init-data.sh
       volumes:
         - name: postgres-storage
-          persistentVolumeClaim:
-            claimName: postgres-pvc
+          emptyDir: {}
         - name: init-script
           configMap:
             name: postgres-init-script

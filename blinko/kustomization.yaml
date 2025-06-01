@@ -5,3 +5,8 @@ namespace: blinko
 
 resources:
   - namespace.yaml
+  - blinko-website-deployment.yaml
+  - blinko-website-service.yaml
+  - postgres-deployment.yaml
+  - postgres-pvc.yaml
+  - postgres-service.yaml

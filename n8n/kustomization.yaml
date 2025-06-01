@@ -6,6 +6,10 @@ namespace: n8n
 resources:
   - n8n-deployment.yaml
   - n8n-service.yaml
+  - postgres-deployment.yaml
+  - postgres-init-script.yaml
+  - postgres-pvc.yaml
+  - postgres-service.yaml
 
 secretGenerator:
   - name: n8n-postgres-secret

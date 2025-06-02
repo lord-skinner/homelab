@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: joplin-postgres
+  labels:
+    app: joplin-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: joplin-postgres
+  template:
+    metadata:
+      labels:
+        app: joplin-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: joplin
+        - name: POSTGRES_USER
+          value: joplin
+        - name: POSTGRES_PASSWORD
+          value: joplinpassword
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: joplin-postgres-pvc

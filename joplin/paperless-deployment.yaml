@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless
+  labels:
+    app: paperless
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless
+  template:
+    metadata:
+      labels:
+        app: paperless
+    spec:
+      containers:
+      - name: paperless
+        image: ghcr.io/paperless-ngx/paperless-ngx:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PAPERLESS_SECRET_KEY
+          value: "changemelater"
+        - name: PAPERLESS_REDIS
+          value: "redis://localhost:6379"
+        - name: PAPERLESS_DBHOST
+          value: "joplin-postgres"
+        - name: PAPERLESS_DBPORT
+          value: "5432"
+        - name: PAPERLESS_DBNAME
+          value: "joplin"
+        - name: PAPERLESS_DBUSER
+          value: "joplin"
+        - name: PAPERLESS_DBPASS
+          value: "joplinpassword"
+        volumeMounts:
+        - name: data
+          mountPath: /usr/src/paperless/data
+        - name: media
+          mountPath: /usr/src/paperless/media
+        - name: export
+          mountPath: /usr/src/paperless/export
+        - name: consume
+          mountPath: /usr/src/paperless/consume
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: joplin-data-pvc
+      - name: media
+        emptyDir: {}
+      - name: export
+        emptyDir: {}
+      - name: consume
+        emptyDir: {}

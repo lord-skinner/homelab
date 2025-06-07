@@ -39,3 +39,68 @@ Code base for my homelab setup
 | Multi Architecture     |
 | Automated Provisioning |
 | More to Come...        |
+
+
+## NETBOOT Diagram
+```
+                                  ┌─────────────────┐
+                                  │                 │
+                                  │  Raspberry Pi 3 │
+                                  │  Network Boot   │
+                                  │  Server         │
+                                  │                 │
+                                  └─────┬───────────┘
+                                        │
+                                        │ Ethernet
+                                        │
+                     ┌─────────────────┴──────────────────┐
+                     │                                    │
+                     │           Network Switch           │
+                     │                                    │
+                     └───┬─────────────┬──────────┬───────┘
+                         │             │          │
+                         │             │          │
+               ┌─────────┴──────┐      │      ┌───┴──────────────┐
+               │                │      │      │                  │
+               │  AMD64 Node    │      │      │  ARM64 Node      │
+               │(Control Plane) │      │      │  (Worker)        │
+               │                │      │      │                  │
+               └────────────────┘      │      └──────────────────┘
+                                       │
+                               ┌───────┴──────────┐
+                               │                  │
+                               │  AMD64 Node      │
+                               │  (Worker)        │
+                               │                  │
+                               └──────────────────┘
+
+Services running on Raspberry Pi 3:
+┌───────────────────────────────────────────────────────────┐
+│                                                           │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐ │
+│  │  DHCP   │    │  TFTP   │    │  NFS    │    │ Helper  │ │
+│  │ Server  │    │ Server  │    │ Server  │    │ Scripts │ │
+│  └─────────┘    └─────────┘    └─────────┘    └─────────┘ │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+
+Directory Structure:
+/srv/netboot/
+├── tftp/                  # TFTP boot files
+│   ├── pxelinux.cfg/      # PXE boot configurations
+│   ├── arm/               # ARM boot files
+│   └── amd/               # AMD boot files
+└── nfs/                   # NFS root filesystems
+    ├── arm/               # ARM root filesystems
+    │   └── worker1/       # Worker node filesystem
+    └── amd/               # AMD root filesystems
+        ├── master1/       # Control plane node filesystem
+        └── worker2/       # Worker node filesystem
+
+Network Boot Process:
+1. Node powers on and broadcasts DHCP request
+2. Raspberry Pi responds with IP and boot file information
+3. Node downloads boot files via TFTP
+4. Node mounts root filesystem via NFS
+5. Node boots and joins Kubernetes cluster
+```

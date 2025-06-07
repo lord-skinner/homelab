@@ -1,0 +1,2 @@
+## Requirements
+Setup a standalone Raspberry PI 3 for handling network booting from root file systems for machines (nodes) running inside my cluster. I have both ARM and AMD nodes in my cluster.

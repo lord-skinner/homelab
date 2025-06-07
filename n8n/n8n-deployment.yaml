@@ -12,6 +12,22 @@ spec:
       labels:
         app: n8n
     spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - postgres
+              topologyKey: "kubernetes.io/hostname"
       containers:
         - name: n8n
           image: n8nio/n8n
@@ -20,40 +36,70 @@ spec:
               value: "5678"
             - name: N8N_SECURE_COOKIE
               value: "false"
-            - name: N8N_RUNNERS_ENABLED
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-postgres-secret
+                  key: N8N_ENCRYPTION_KEY
+            - name: N8N_METRICS
               value: "true"
-            - name: N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
+            - name: N8N_DIAGNOSTICS_ENABLED
+              value: "false"
+            - name: N8N_TEMPLATES_ENABLED
+              value: "true"
+            - name: N8N_DISABLE_PRODUCTION_MAIN_PROCESS
+              value: "false"
+            - name: N8N_RUNNERS_ENABLED
               value: "true"
             - name: DB_TYPE
               value: postgresdb
             - name: DB_POSTGRESDB_HOST
-              value: "postgres"
-            - name: DB_POSTGRESDB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: POSTGRES_USER
-            - name: DB_POSTGRESDB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: POSTGRES_PASSWORD
+              value: "10.43.118.45"
+            - name: DB_POSTGRESDB_PORT
+              value: "5432"
             - name: DB_POSTGRESDB_DATABASE
               valueFrom:
                 secretKeyRef:
                   name: n8n-postgres-secret
-                  key: POSTGRES_DB
-            - name: DB_POSTGRESDB_PORT
+                  key: N8N_POSTGRES_DB
+            - name: DB_POSTGRESDB_USER
               valueFrom:
                 secretKeyRef:
                   name: n8n-postgres-secret
-                  key: POSTGRESDB_PORT
+                  key: N8N_POSTGRES_USER
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: n8n-postgres-secret
+                  key: N8N_POSTGRES_PASSWORD
           ports:
             - containerPort: 5678
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5678
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5678
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "250m"
             limits:
-              memory: "512Mi"
-              cpu: "500m"
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: n8n-config
+              mountPath: /home/node/.n8n/custom
+              readOnly: true
+      volumes:
+        - name: n8n-config
+          configMap:
+            name: n8n-config

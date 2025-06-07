@@ -1,0 +1,11 @@
+{
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true,
+  "git.smartCommitChanges": "all",
+  "editor.minimap.enabled": false,
+  "editor.formatOnSave": true,
+  "editor.find.autoFindInSelection": "multiline",
+  "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  "github.copilot.chat.followUps": "always"
+}

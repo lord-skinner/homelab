@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n8n-config
+  namespace: n8n
+data:
+  n8n.json: |
+    {
+      "database": {
+        "type": "postgresdb",
+        "postgresdb": {
+          "host": "10.43.118.45",
+          "port": 5432,
+          "database": "n8n",
+          "user": "n8n",
+          "connectionTimeoutMillis": 10000,
+          "max": 20,
+          "ssl": false
+        }
+      },
+      "executions": {
+        "timeout": 3600,
+        "maxTimeout": 7200
+      },
+      "workflowTagsDisabled": false,
+      "templates": {
+        "enabled": true,
+        "host": "https://api.n8n.io"
+      },
+      "onboarding": {
+        "enabled": false
+      },
+      "deployment": {
+        "type": "kubernetes"
+      }
+    }

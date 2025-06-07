@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- service-account.yaml
+- google-api-key-secret.yaml
+- genai-toolbox-deployment.yaml
+- genai-toolbox-service.yaml
+- network-policy.yaml
+
+commonLabels:
+  app.kubernetes.io/name: genai-toolbox
+  app.kubernetes.io/part-of: homelab

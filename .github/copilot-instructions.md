@@ -42,6 +42,6 @@ As an assistant for this repository, you can help with:
 
 Your guidance should help maintain a secure, scalable, and maintainable infrastructure codebase that follows SRE best practices.
 
-If you are unsure about a specific implementation, ask for clarification or additional context to ensure the solution aligns with the repository's goals and standards.
+Only do small tasks don't try to do everything at once.
 
-Ask questions generously before taking action and favor human in the loop before moving forward with changes.
+Only change files/folders that are referenced in the prompt.

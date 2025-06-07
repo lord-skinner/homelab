@@ -5,15 +5,26 @@
 # 
 # This script helps prepare root filesystems for network-booted nodes
 # in a mixed architecture (ARM and AMD) Kubernetes cluster.
+# 
+# Features:
+# - Basic Debian-based root filesystem creation
+# - NVIDIA GPU driver and container runtime support
+# - Google Coral TPU driver support  
+# - NFS RAID storage configuration
+# - Kubernetes prerequisites setup
 #
 # Usage: 
-# ./prepare-rootfs.sh <architecture> <node_name> [base_image_url]
+# ./prepare-rootfs.sh <architecture> <node_name> [base_image_url] [options]
 # 
-# Example:
-# For ARM node
-# sudo ./2_prepare-rootfs.sh arm worker1 https://cloud.debian.org/images/cloud/bullseye/latest/debian-11-generic-arm64.tar.xz
-# For AMD node
-# sudo ./2_prepare-rootfs.sh amd master1 https://cloud.debian.org/images/cloud/bullseye/latest/debian-11-generic-amd64.tar.xz
+# Examples:
+# Basic ARM node:
+# sudo ./2_prepare-rootfs.sh arm worker1
+#
+# AMD node with NVIDIA GPU:
+# sudo ./2_prepare-rootfs.sh amd gpu-worker1 --nvidia
+#
+# ARM node with Coral TPU and NFS RAID:
+# sudo ./2_prepare-rootfs.sh arm tpu-worker1 --coral-tpu --nfs-raid 192.168.1.100:/mnt/raid
 #########
 
 set -e
@@ -55,12 +66,88 @@ log() {
   esac
 }
 
-# Check for correct number of arguments
-if [ "$#" -lt 2 ]; then
-  echo "Usage: $0 <architecture> <node_name> [base_image_url]"
+# Initialize flags
+NVIDIA_SUPPORT=false
+CORAL_TPU_SUPPORT=false
+NFS_RAID_SUPPORT=false
+NFS_RAID_SERVER=""
+NFS_RAID_PATH=""
+
+# Function to display usage
+show_usage() {
+  echo "Usage: $0 <architecture> <node_name> [base_image_url] [options]"
   echo "  architecture: arm or amd"
   echo "  node_name: Name of the node (e.g., worker1)"
   echo "  base_image_url: Optional URL to a rootfs tarball"
+  echo ""
+  echo "Options:"
+  echo "  --nvidia               Install NVIDIA drivers and container runtime"
+  echo "  --coral-tpu            Install Google Coral TPU drivers"
+  echo "  --nfs-raid SERVER:PATH Configure NFS RAID storage mount"
+  echo "  --help                 Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  # Basic ARM node"
+  echo "  sudo ./2_prepare-rootfs.sh arm worker1"
+  echo ""
+  echo "  # AMD node with NVIDIA GPU support"
+  echo "  sudo ./2_prepare-rootfs.sh amd gpu-worker1 --nvidia"
+  echo ""
+  echo "  # ARM node with Coral TPU and NFS RAID"
+  echo "  sudo ./2_prepare-rootfs.sh arm tpu-worker1 --coral-tpu --nfs-raid 192.168.1.100:/mnt/raid"
+}
+
+# Parse arguments
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --nvidia)
+      NVIDIA_SUPPORT=true
+      shift
+      ;;
+    --coral-tpu)
+      CORAL_TPU_SUPPORT=true
+      shift
+      ;;
+    --nfs-raid)
+      NFS_RAID_SUPPORT=true
+      if [[ -n "$2" && "$2" != --* ]]; then
+        if [[ "$2" =~ ^[^:]+:.+ ]]; then
+          NFS_RAID_SERVER=$(echo "$2" | cut -d: -f1)
+          NFS_RAID_PATH=$(echo "$2" | cut -d: -f2-)
+          shift 2
+        else
+          log "error" "NFS RAID format should be SERVER:PATH"
+          exit 1
+        fi
+      else
+        log "error" "NFS RAID option requires SERVER:PATH argument"
+        exit 1
+      fi
+      ;;
+    --help)
+      show_usage
+      exit 0
+      ;;
+    --*)
+      log "error" "Unknown option $1"
+      show_usage
+      exit 1
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Restore positional parameters
+set -- "${POSITIONAL_ARGS[@]}"
+
+# Check for correct number of arguments
+if [ "$#" -lt 2 ]; then
+  log "error" "Missing required arguments"
+  show_usage
   exit 1
 fi
 
@@ -86,6 +173,97 @@ if [ "$ARCHITECTURE" == "arm" ]; then
 else
   DEB_ARCH="amd64"
 fi
+
+# Hardware setup functions
+setup_nvidia_drivers() {
+  local chroot_path="$1"
+  log "info" "Setting up NVIDIA driver support..."
+  
+  # Add NVIDIA repository and install drivers in chroot
+  cat >> "${chroot_path}/tmp/chroot_setup.sh" << 'NVIDIA_EOF'
+
+# NVIDIA Driver Setup
+log "info" "Installing NVIDIA drivers..."
+
+# Add NVIDIA package repository
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+# Update package list
+apt-get update
+
+# Install NVIDIA drivers and container toolkit
+apt-get install -y --no-install-recommends \
+    nvidia-driver \
+    nvidia-container-toolkit \
+    nvidia-container-runtime
+
+# Configure container runtime
+nvidia-ctk runtime configure --runtime=containerd
+
+NVIDIA_EOF
+}
+
+setup_coral_tpu_drivers() {
+  local chroot_path="$1"
+  log "info" "Setting up Google Coral TPU driver support..."
+  
+  cat >> "${chroot_path}/tmp/chroot_setup.sh" << 'CORAL_EOF'
+
+# Coral TPU Driver Setup
+log "info" "Installing Google Coral TPU drivers..."
+
+# Add Google's Coral repository
+echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | tee /etc/apt/sources.list.d/coral-edgetpu.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+
+# Update package list
+apt-get update
+
+# Install Coral TPU drivers and libraries
+apt-get install -y --no-install-recommends \
+    gasket-module-$(uname -r) \
+    libedgetpu1-std \
+    python3-pycoral \
+    python3-tflite-runtime
+
+# Configure udev rules for TPU access
+echo 'SUBSYSTEM=="apex", GROUP="apex"' > /etc/udev/rules.d/65-apex.rules
+groupadd -f apex
+usermod -a -G apex k8s
+
+CORAL_EOF
+}
+
+setup_nfs_raid_storage() {
+  local chroot_path="$1"
+  local nfs_server="$2"
+  local nfs_path="$3"
+  log "info" "Setting up NFS RAID storage mount (${nfs_server}:${nfs_path})..."
+  
+  cat >> "${chroot_path}/tmp/chroot_setup.sh" << NFS_EOF
+
+# NFS RAID Storage Setup
+log "info" "Installing NFS client and configuring RAID storage..."
+
+# Install NFS client
+apt-get install -y --no-install-recommends \
+    nfs-common \
+    nfs4-acl-tools
+
+# Create mount point
+mkdir -p /mnt/raid-storage
+
+NFS_EOF
+
+  # Add NFS mount to fstab
+  cat >> "${chroot_path}/etc/fstab" << EOF
+${nfs_server}:${nfs_path} /mnt/raid-storage nfs4 defaults,_netdev 0 0
+EOF
+}
 
 # Create directories
 NODE_ROOT="${NFS_DIR}/${ARCHITECTURE}/${NODE_NAME}"
@@ -214,6 +392,19 @@ rm -rf /var/lib/apt/lists/*
 EOF
 chmod +x "/tmp/chroot_setup.sh"
 
+# Add hardware-specific setup to chroot script
+if [ "$NVIDIA_SUPPORT" = true ]; then
+  setup_nvidia_drivers "$NODE_ROOT"
+fi
+
+if [ "$CORAL_TPU_SUPPORT" = true ]; then
+  setup_coral_tpu_drivers "$NODE_ROOT"
+fi
+
+if [ "$NFS_RAID_SUPPORT" = true ]; then
+  setup_nfs_raid_storage "$NODE_ROOT" "$NFS_RAID_SERVER" "$NFS_RAID_PATH"
+fi
+
 # Copy the setup script to the chroot and execute it
 cp "/tmp/chroot_setup.sh" "${NODE_ROOT}/tmp/"
 log "info" "Setting up packages inside the chroot environment..."
@@ -258,10 +449,33 @@ EOF
 # Final instructions
 log "success" "Root filesystem for ${NODE_NAME} (${ARCHITECTURE}) prepared successfully!"
 log "info" "Root filesystem location: ${NODE_ROOT}"
+
+# Display configured hardware features
+if [ "$NVIDIA_SUPPORT" = true ] || [ "$CORAL_TPU_SUPPORT" = true ] || [ "$NFS_RAID_SUPPORT" = true ]; then
+  log "info" "Configured hardware features:"
+  if [ "$NVIDIA_SUPPORT" = true ]; then
+    log "info" "  ✓ NVIDIA GPU support with container runtime"
+  fi
+  if [ "$CORAL_TPU_SUPPORT" = true ]; then
+    log "info" "  ✓ Google Coral TPU support"
+  fi
+  if [ "$NFS_RAID_SUPPORT" = true ]; then
+    log "info" "  ✓ NFS RAID storage: ${NFS_RAID_SERVER}:${NFS_RAID_PATH} -> /mnt/raid-storage"
+  fi
+fi
+
 log "info" "Next steps:"
 log "info" "1. Ensure you have the appropriate kernel (vmlinuz) and initrd in the TFTP directory"
 log "info" "2. Add the node to the DHCP configuration using the add-node.sh script"
 log "info" "3. Update the NFS exports if needed"
 log "info" "4. Configure your node to boot from the network"
+
+# Hardware-specific next steps
+if [ "$NVIDIA_SUPPORT" = true ]; then
+  log "info" "5. For NVIDIA nodes: Ensure containerd is configured to use nvidia-container-runtime"
+fi
+if [ "$CORAL_TPU_SUPPORT" = true ]; then
+  log "info" "5. For Coral TPU nodes: Verify TPU device is detected with 'lspci' or 'lsusb'"
+fi
 
 exit 0

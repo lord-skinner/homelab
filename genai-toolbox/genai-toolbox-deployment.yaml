@@ -28,10 +28,10 @@ spec:
               - key: kubernetes.io/arch
                 operator: In
                 values:
-                - arm64
+                - amd64
       containers:
       - name: genai-toolbox
-        image: us-docker.pkg.dev/cloud-aiml-demos/genai-toolbox/toolbox:latest
+        image: us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

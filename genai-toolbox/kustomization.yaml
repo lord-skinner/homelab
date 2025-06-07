@@ -4,10 +4,17 @@ kind: Kustomization
 resources:
 - namespace.yaml
 - service-account.yaml
-- google-api-key-secret.yaml
 - genai-toolbox-deployment.yaml
 - genai-toolbox-service.yaml
 - network-policy.yaml
+
+secretGenerator:
+  - name: google-api-key
+    namespace: genai-toolbox
+    envs:
+      - .env
+    options:
+      disableNameSuffixHash: true
 
 commonLabels:
   app.kubernetes.io/name: genai-toolbox

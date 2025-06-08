@@ -8,7 +8,7 @@ Code base for my homelab setup
 | ------------- | --------------------- | --------------------------- | ------------------------------ |
 | network       | Unifi w/ VLAN         | Unifi Dream Router          | Homelab Network VLAN 10.0.0.10 |
 | pihole        | Raspberry PI 3b+      | 4 cores, 4 threads, 1GB RAM | DNS / Reverse Proxy            |
-| cluster state | Raspberry PI 5 w/ SSD | 4 cores, 4 threads, 8GB RAM | NETBOOT (DHCP, TFTP, NFS)      |
+| cluster state | Raspberry PI 5 w/ SSD | 4 cores, 4 threads, 8GB RAM | NETBOOT (DHCP, TFTP, HTTP)     |
 
 ### Cluster Details
 

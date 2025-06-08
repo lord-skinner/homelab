@@ -249,6 +249,16 @@ case "$ROLE" in
         echo "Configuring as Kubernetes control plane..."
         # Save cluster configuration for later initialization
         "$STATE_SCRIPT" save "k8s-role" "control-plane"
+        
+        # Download and run device passthrough configuration
+        wget -O /tmp/device-passthrough.sh http://10.0.0.10/scripts/device-passthrough.sh
+        chmod +x /tmp/device-passthrough.sh
+        /tmp/device-passthrough.sh
+        
+        # Download and run Kubernetes control plane initialization
+        wget -O /tmp/k8s-init.sh http://10.0.0.10/scripts/k8s-control-plane-init.sh
+        chmod +x /tmp/k8s-init.sh
+        /tmp/k8s-init.sh
         ;;
     "worker")
         echo "Configuring as Kubernetes worker..."
@@ -481,6 +491,10 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# Copy the Kubernetes and device passthrough scripts to HTTP server
+sudo cp /home/skinner/homelab/provisioning/control-plane/k8s-control-plane-init.sh "$HTTP_ROOT/scripts/"
+sudo cp /home/skinner/homelab/provisioning/control-plane/device-passthrough.sh "$HTTP_ROOT/scripts/"
 
 # Make scripts executable
 sudo chmod +x "$HTTP_ROOT/scripts/"*.sh

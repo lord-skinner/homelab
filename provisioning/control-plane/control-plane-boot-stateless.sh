@@ -64,9 +64,188 @@ sudo cp -rf "$TFTP_ROOT/debian-installer/amd64/grub/"* "$TFTP_ROOT/grub/" 2>/dev
 # Ensure proper ownership
 sudo chown -R tftp:tftp "$TFTP_ROOT"
 
-# Skip live boot setup for now - focus on network installer
-echo "Skipping live boot setup - using network installer as primary method"
-echo "Live boot can be configured later if needed"
+# Download Alpine Linux for true stateless booting
+echo "Setting up Alpine Linux for stateless operation..."
+ALPINE_VERSION="3.18"
+ALPINE_ARCH="x86_64"
+ALPINE_ISO_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/releases/${ALPINE_ARCH}/alpine-netboot-${ALPINE_VERSION}.0-${ALPINE_ARCH}.tar.gz"
+ALPINE_AVAILABLE=false
+
+if [ ! -f "$LIVE_ROOT/alpine-netboot.tar.gz" ]; then
+    echo "Downloading Alpine Linux netboot files..."
+    sudo mkdir -p "$LIVE_ROOT"
+    cd "$LIVE_ROOT"
+    
+    # Download Alpine netboot with timeout
+    timeout 60 sudo wget -O "alpine-netboot.tar.gz" "$ALPINE_ISO_URL" || {
+        echo "Alpine download failed - falling back to Debian installer"
+        sudo rm -f "alpine-netboot.tar.gz"
+    }
+fi
+
+# Extract Alpine files if download was successful
+if [ -f "$LIVE_ROOT/alpine-netboot.tar.gz" ] && [ -s "$LIVE_ROOT/alpine-netboot.tar.gz" ]; then
+    echo "Extracting Alpine netboot files..."
+    cd "$LIVE_ROOT"
+    sudo tar -xzf alpine-netboot.tar.gz
+    
+    # Copy Alpine boot files to TFTP root
+    sudo mkdir -p "$TFTP_ROOT/alpine"
+    if [ -f "boot/vmlinuz-lts" ] && [ -f "boot/initramfs-lts" ]; then
+        sudo cp boot/vmlinuz-lts "$TFTP_ROOT/alpine/"
+        sudo cp boot/initramfs-lts "$TFTP_ROOT/alpine/"
+        
+        # Also copy modloop to HTTP root for download
+        sudo mkdir -p "$HTTP_ROOT/alpine/boot"
+        [ -f "boot/modloop-lts" ] && sudo cp boot/modloop-lts "$HTTP_ROOT/alpine/boot/"
+        
+        sudo chown -R tftp:tftp "$TFTP_ROOT/alpine"
+        sudo chown -R www-data:www-data "$HTTP_ROOT/alpine"
+        
+        # Create Alpine overlay (apkovl) for stateless provisioning
+        echo "Creating Alpine overlay for stateless provisioning..."
+        sudo mkdir -p "$HTTP_ROOT/alpine/apkovl"
+        
+        # Create a minimal overlay structure
+        OVERLAY_DIR="/tmp/alpine-overlay"
+        sudo rm -rf "$OVERLAY_DIR"
+        sudo mkdir -p "$OVERLAY_DIR/etc/local.d"
+        sudo mkdir -p "$OVERLAY_DIR/etc/runlevels/default"
+        
+        # Create the provisioning script that runs on boot
+        sudo tee "$OVERLAY_DIR/etc/local.d/kubernetes-provision.start" > /dev/null <<'PROVISION_EOF'
+#!/bin/ash
+# Kubernetes provisioning script for Alpine Linux stateless machines
+
+# Wait for network
+sleep 5
+
+# Get MAC address
+MAC_ADDRESS=$(cat /sys/class/net/eth*/address | head -1 | tr '[:upper:]' '[:lower:]')
+
+# Download and run the main provisioning script
+wget -qO /tmp/provision.sh "http://10.0.0.2/scripts/alpine-provision.sh"
+chmod +x /tmp/provision.sh
+/tmp/provision.sh "$MAC_ADDRESS" || echo "Provisioning failed, continuing..."
+
+# Mark as executable
+chmod +x /etc/local.d/kubernetes-provision.start
+PROVISION_EOF
+
+        sudo chmod +x "$OVERLAY_DIR/etc/local.d/kubernetes-provision.start"
+        
+        # Enable local service
+        sudo ln -sf /etc/init.d/local "$OVERLAY_DIR/etc/runlevels/default/local"
+        
+        # Create the overlay tarball
+        cd "$OVERLAY_DIR"
+        sudo tar -czf "$HTTP_ROOT/alpine/apkovl/kubernetes.apkovl.tar.gz" .
+        sudo chown www-data:www-data "$HTTP_ROOT/alpine/apkovl/kubernetes.apkovl.tar.gz"
+        
+        # Clean up
+        sudo rm -rf "$OVERLAY_DIR"
+        
+        ALPINE_AVAILABLE=true
+        echo "Alpine Linux files and overlay ready for stateless boot"
+    else
+        echo "Alpine extraction failed - using Debian installer"
+        ALPINE_AVAILABLE=false
+    fi
+else
+    echo "Alpine not available - using Debian installer"
+    ALPINE_AVAILABLE=false
+fi
+
+# Create Alpine-specific provisioning script
+sudo tee "$HTTP_ROOT/scripts/alpine-provision.sh" > /dev/null <<'ALPINE_EOF'
+#!/bin/ash
+# Alpine Linux provisioning script for stateless machines
+
+set -euo pipefail
+
+MAC_ADDRESS="$1"
+
+# Basic Alpine setup
+apk update
+apk add curl wget jq bash docker containerd openssh-server sudo
+
+# Enable services
+rc-update add docker default
+rc-update add containerd default
+rc-update add sshd default
+
+# Get configuration from machine registry
+CONFIG=$(wget -qO- "http://10.0.0.2/machines/registry.json" || echo '{}')
+MACHINE_INFO=$(echo "$CONFIG" | jq -r ".machines[\"$MAC_ADDRESS\"] // empty")
+
+if [ -n "$MACHINE_INFO" ] && [ "$MACHINE_INFO" != "null" ]; then
+    HOSTNAME=$(echo "$MACHINE_INFO" | jq -r '.hostname // "alpine-stateless"')
+    ROLE=$(echo "$MACHINE_INFO" | jq -r '.role // "worker"')
+    FEATURES=$(echo "$MACHINE_INFO" | jq -r '.features[]? // empty' | tr '\n' ' ')
+    
+    echo "Machine found in registry: $HOSTNAME (Role: $ROLE, Features: $FEATURES)"
+else
+    HOSTNAME="alpine-$MAC_ADDRESS"
+    ROLE="worker"
+    FEATURES=""
+    echo "Machine not found in registry, using defaults"
+fi
+
+# Set hostname
+hostname "$HOSTNAME"
+echo "$HOSTNAME" > /etc/hostname
+
+# Configure networking
+cat > /etc/network/interfaces <<NETEOF
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+NETEOF
+
+# Create admin user
+adduser -D admin
+echo "admin:kubernetes123" | chpasswd
+addgroup admin wheel
+echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+# Install SSH keys if available
+mkdir -p /home/admin/.ssh
+wget -qO /home/admin/.ssh/authorized_keys "http://10.0.0.2/cloud-init/$MAC_ADDRESS/authorized_keys" || true
+chown -R admin:admin /home/admin/.ssh
+chmod 700 /home/admin/.ssh
+chmod 600 /home/admin/.ssh/authorized_keys 2>/dev/null || true
+
+# Start SSH service
+service sshd start
+
+# Handle kubernetes feature installation
+if echo "$FEATURES" | grep -q "kubernetes"; then
+    echo "Installing kubernetes feature..."
+    
+    # Install Kubernetes tools
+    apk add kubelet kubeadm kubectl --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing
+    
+    # Create kubelet service
+    rc-update add kubelet default
+    
+    # Download kubernetes-specific configurations
+    mkdir -p /etc/kubernetes
+    wget -qO /etc/kubernetes/config.yaml "http://10.0.0.2/scripts/kubernetes-config.yaml" || true
+    
+    echo "Kubernetes feature installed"
+fi
+
+# Report successful provisioning
+wget -qO- --post-data="{\"mac\":\"$MAC_ADDRESS\",\"hostname\":\"$HOSTNAME\",\"state\":\"provisioned\",\"message\":\"Alpine stateless boot with kubernetes complete\",\"timestamp\":\"$(date -Iseconds)\"}" \
+    --header="Content-Type: application/json" \
+    "http://10.0.0.2/api/state" || echo "Could not report state"
+
+echo "Alpine stateless provisioning complete for $HOSTNAME"
+ALPINE_EOF
+
+sudo chmod +x "$HTTP_ROOT/scripts/alpine-provision.sh"
 
 # Create cloud-init configuration generator script
 sudo tee "$HTTP_ROOT/scripts/generate-cloud-init.sh" > /dev/null <<'EOF'
@@ -201,7 +380,7 @@ sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
       "hostname": "cp-1",
       "role": "worker",
       "architecture": "amd64",
-      "features": ["fernetes", "nfs", "storage"],
+      "features": ["kubernetes", "nfs", "storage"],
       "ip": "10.0.0.20",
       "specs": {
         "cpu": "unknown",
@@ -383,225 +562,25 @@ esac
 echo "Machine provisioning completed successfully"
 EOF
 
-# Create basic API server for state management
-sudo tee "$HTTP_ROOT/scripts/state-api.py" > /dev/null <<'EOF'
-#!/usr/bin/env python3
-"""
-Simple state management API server for machine provisioning
-"""
-import json
-import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
-import sqlite3
-from datetime import datetime
-
-STATE_DB = '/srv/state/machines.db'
-REGISTRY_FILE = '/srv/http/machines/registry.json'
-
-class StateHandler(BaseHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        # Initialize database
-        self.init_db()
-        super().__init__(*args, **kwargs)
-    
-    def init_db(self):
-        """Initialize SQLite database for state management"""
-        os.makedirs(os.path.dirname(STATE_DB), exist_ok=True)
-        conn = sqlite3.connect(STATE_DB)
-        cursor = conn.cursor()
-        
-        # Create tables
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS machine_states (
-                mac TEXT PRIMARY KEY,
-                hostname TEXT,
-                state TEXT,
-                message TEXT,
-                timestamp TEXT
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS machine_data (
-                mac TEXT,
-                key TEXT,
-                value TEXT,
-                timestamp TEXT,
-                PRIMARY KEY (mac, key)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-    
-    def do_GET(self):
-        """Handle GET requests"""
-        path = urlparse(self.path).path
-        
-        if path.startswith('/api/config/'):
-            mac = path.split('/')[-1]
-            self.get_machine_config(mac)
-        elif path.startswith('/api/data/'):
-            parts = path.split('/')
-            mac, key = parts[-2], parts[-1]
-            self.get_machine_data(mac, key)
-        elif path == '/api/states':
-            self.get_all_states()
-        else:
-            self.send_error(404)
-    
-    def do_POST(self):
-        """Handle POST requests"""
-        path = urlparse(self.path).path
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length).decode('utf-8')
-        data = json.loads(post_data)
-        
-        if path == '/api/state':
-            self.update_machine_state(data)
-        elif path == '/api/data':
-            self.save_machine_data(data)
-        else:
-            self.send_error(404)
-    
-    def get_machine_config(self, mac):
-        """Get configuration for a specific machine"""
-        try:
-            with open(REGISTRY_FILE, 'r') as f:
-                registry = json.load(f)
-            
-            if mac in registry['machines']:
-                config = registry['machines'][mac]
-                config['defaults'] = registry['defaults']
-                self.send_json_response(config)
-            else:
-                # Return default configuration for unknown machines
-                default_config = {
-                    "hostname": f"unknown-{mac.replace(':', '')}",
-                    "role": "worker",
-                    "architecture": "amd64",
-                    "features": ["kubernetes"],
-                    "defaults": registry['defaults']
-                }
-                self.send_json_response(default_config)
-        except Exception as e:
-            self.send_error(500, str(e))
-    
-    def update_machine_state(self, data):
-        """Update machine state"""
-        try:
-            conn = sqlite3.connect(STATE_DB)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT OR REPLACE INTO machine_states 
-                (mac, hostname, state, message, timestamp)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (data['mac'], data['hostname'], data['state'], 
-                  data['message'], data['timestamp']))
-            
-            conn.commit()
-            conn.close()
-            
-            self.send_json_response({"status": "success"})
-        except Exception as e:
-            self.send_error(500, str(e))
-    
-    def save_machine_data(self, data):
-        """Save persistent machine data"""
-        try:
-            conn = sqlite3.connect(STATE_DB)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT OR REPLACE INTO machine_data 
-                (mac, key, value, timestamp)
-                VALUES (?, ?, ?, ?)
-            ''', (data['mac'], data['key'], data['value'], 
-                  datetime.now().isoformat()))
-            
-            conn.commit()
-            conn.close()
-            
-            self.send_json_response({"status": "success"})
-        except Exception as e:
-            self.send_error(500, str(e))
-    
-    def get_machine_data(self, mac, key):
-        """Get persistent machine data"""
-        try:
-            conn = sqlite3.connect(STATE_DB)
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                'SELECT value FROM machine_data WHERE mac = ? AND key = ?',
-                (mac, key)
-            )
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result:
-                self.send_json_response({"value": result[0]})
-            else:
-                self.send_json_response({"value": None})
-        except Exception as e:
-            self.send_error(500, str(e))
-    
-    def get_all_states(self):
-        """Get all machine states"""
-        try:
-            conn = sqlite3.connect(STATE_DB)
-            cursor = conn.cursor()
-            
-            cursor.execute('SELECT * FROM machine_states')
-            rows = cursor.fetchall()
-            conn.close()
-            
-            states = []
-            for row in rows:
-                states.append({
-                    "mac": row[0],
-                    "hostname": row[1],
-                    "state": row[2],
-                    "message": row[3],
-                    "timestamp": row[4]
-                })
-            
-            self.send_json_response({"states": states})
-        except Exception as e:
-            self.send_error(500, str(e))
-    
-    def send_json_response(self, data):
-        """Send JSON response"""
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
-
-if __name__ == '__main__':
-    server = HTTPServer(('0.0.0.0', 8080), StateHandler)
-    print("State API server running on port 8080")
-    server.serve_forever()
-EOF
-
-# Create systemd service for state API
-sudo tee /etc/systemd/system/machine-state-api.service > /dev/null <<EOF
-[Unit]
-Description=Machine State API Server
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/srv/http/scripts
-ExecStart=/usr/bin/python3 /srv/http/scripts/state-api.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
+# Create basic Kubernetes configuration file
+sudo tee "$HTTP_ROOT/scripts/kubernetes-config.yaml" > /dev/null <<'K8S_CONFIG_EOF'
+# Basic Kubernetes configuration for stateless machines
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://10.0.0.20:6443
+  name: homelab
+contexts:
+- context:
+    cluster: homelab
+    user: admin
+  name: homelab
+current-context: homelab
+users:
+- name: admin
+  user: {}
+K8S_CONFIG_EOF
 
 # Make scripts executable
 sudo chmod +x "$HTTP_ROOT/scripts/"*.sh
@@ -649,8 +628,34 @@ EOF
     echo "Live boot option added to PXE menu"
 fi
 
-# Create GRUB configuration for UEFI booting
-sudo tee "$TFTP_ROOT/grub/grub.cfg" > /dev/null <<EOF
+# Create GRUB configuration for UEFI booting with conditional Alpine support
+if [ "$ALPINE_AVAILABLE" = true ]; then
+    sudo tee "$TFTP_ROOT/grub/grub.cfg" > /dev/null <<EOF
+set default="0"
+set timeout=10
+
+menuentry "Alpine Linux (Stateless)" {
+    linux /alpine/vmlinuz-lts console=tty0 console=ttyS0,115200n8 modloop=http://$SERVER_IP/alpine/boot/modloop-lts alpine_repo=http://dl-cdn.alpinelinux.org/alpine/v3.18/main apkovl=http://$SERVER_IP/alpine/apkovl/kubernetes.apkovl.tar.gz
+    initrd /alpine/initramfs-lts
+}
+
+menuentry "Debian Network Install (Auto-provision)" {
+    linux /debian-installer/amd64/linux auto=true priority=critical preseed/url=http://$SERVER_IP/preseed/preseed.cfg netcfg/get_hostname=unassigned netcfg/get_domain=local debian-installer/allow_unauthenticated_ssl=true
+    initrd /debian-installer/amd64/initrd.gz
+}
+
+menuentry "Debian Manual Install" {
+    linux /debian-installer/amd64/linux
+    initrd /debian-installer/amd64/initrd.gz
+}
+
+menuentry "Boot from local disk" {
+    exit
+}
+EOF
+    echo "GRUB configured with Alpine Linux stateless boot as default"
+else
+    sudo tee "$TFTP_ROOT/grub/grub.cfg" > /dev/null <<EOF
 set default="0"
 set timeout=10
 
@@ -668,6 +673,8 @@ menuentry "Boot from local disk" {
     exit
 }
 EOF
+    echo "GRUB configured with Debian installer (Alpine not available)"
+fi
 
 # Add live boot option only if files exist
 if [ -f "$TFTP_ROOT/live/vmlinuz" ] && [ -s "$TFTP_ROOT/live/vmlinuz" ]; then

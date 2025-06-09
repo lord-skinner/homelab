@@ -1,5 +1,6 @@
 #!/bin/bash
-# Sets up a DHCP and TFTP server for network booting with PXE
+# Sets up TFTP and HTTP servers for network booting with PXE
+# DHCP is handled by network router with PXE options configured
 
 set -euo pipefail
 
@@ -13,18 +14,12 @@ DEBIAN_IMAGE_URL="https://cloud.debian.org/images/cloud/bookworm/latest/debian-1
 DEBIAN_IMAGE_NAME="debian-12-generic-amd64.qcow2"
 NETBOOT_URL="http://ftp.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/netboot.tar.gz"
 
-# Network configuration - adjust these for your network
-DHCP_SUBNET="10.0.0.0"
-DHCP_NETMASK="255.255.255.0"
-DHCP_RANGE_START="10.0.0.200"
-DHCP_RANGE_END="10.0.0.209"
-DHCP_ROUTER="10.0.0.1"
-DHCP_DNS="8.8.8.8, 8.8.4.4"
+# Network configuration
 SERVER_IP="10.0.0.2"
 
 # Install required packages
 sudo apt-get update
-sudo apt-get install -y tftpd-hpa isc-dhcp-server nginx wget jq cloud-init
+sudo apt-get install -y tftpd-hpa nginx wget jq cloud-init
 
 # Create TFTP root directory if it doesn't exist
 sudo mkdir -p "$TFTP_ROOT"
@@ -62,12 +57,23 @@ echo "Setting up machine registry and configurations..."
 sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
 {
   "machines": {
+    "a8:a1:59:41:29:0f": {
+      "hostname": "test-machine",
+      "role": "worker",
+      "architecture": "amd64",
+      "features": ["kubernetes"],
+      "ip": "10.0.0.20",
+      "specs": {
+        "cpu": "unknown",
+        "memory": "unknown"
+      }
+    },
     "00:11:22:33:44:55": {
       "hostname": "k8s-cp-1",
       "role": "control-plane",
       "architecture": "amd64",
       "features": ["kubernetes", "nfs", "storage"],
-      "ip": "10.0.0.11",
+      "ip": "10.0.0.21",
       "specs": {
         "cpu": "4c/4t",
         "memory": "16GB",
@@ -79,7 +85,7 @@ sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
       "role": "worker",
       "architecture": "amd64",
       "features": ["kubernetes", "gpu", "inference"],
-      "ip": "10.0.0.12",
+      "ip": "10.0.0.22",
       "specs": {
         "cpu": "12c/24t",
         "memory": "64GB",
@@ -91,7 +97,7 @@ sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
       "role": "worker", 
       "architecture": "amd64",
       "features": ["kubernetes", "compute"],
-      "ip": "10.0.0.13",
+      "ip": "10.0.0.23",
       "specs": {
         "cpu": "14c/20t",
         "memory": "32GB"
@@ -628,66 +634,25 @@ TFTP_ADDRESS="0.0.0.0:69"
 TFTP_OPTIONS="--secure --create"
 EOF
 
-# Configure DHCP server
-sudo tee /etc/dhcp/dhcpd.conf > /dev/null <<EOF
-# DHCP configuration for PXE booting
-default-lease-time 600;
-max-lease-time 7200;
-authoritative;
-
-# PXE boot configuration
-allow booting;
-allow bootp;
-
-# Subnet configuration
-subnet $DHCP_SUBNET netmask $DHCP_NETMASK {
-    range $DHCP_RANGE_START $DHCP_RANGE_END;
-    option domain-name-servers $DHCP_DNS;
-    option routers $DHCP_ROUTER;
-    option broadcast-address $(echo $DHCP_SUBNET | sed 's/\.0$/.255/');
-    
-    # PXE boot options
-    next-server $SERVER_IP;
-    filename "pxelinux.0";
-    
-    # Boot options for different architectures
-    if substring (option vendor-class-identifier, 0, 9) = "PXEClient" {
-        filename "pxelinux.0";
-    }
-}
-EOF
-
-# Set the network interface for DHCP server
-INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
-sudo tee /etc/default/isc-dhcp-server > /dev/null <<EOF
-# Defaults for isc-dhcp-server
-DHCPDv4_CONF=/etc/dhcp/dhcpd.conf
-DHCPDv4_PID=/var/run/dhcpd.pid
-INTERFACESv4="$INTERFACE"
-EOF
-
 # Restart services
 sudo systemctl restart tftpd-hpa
 sudo systemctl enable tftpd-hpa
-
-# Stop local DHCP server since we're using Unifi router DHCP with PXE options
-sudo systemctl stop isc-dhcp-server
-sudo systemctl disable isc-dhcp-server
 
 sudo systemctl restart nginx
 sudo systemctl enable nginx
 sudo systemctl enable machine-state-api
 sudo systemctl start machine-state-api
 
-echo "DHCP and TFTP servers are set up for network booting"
-echo "DHCP server serving range: $DHCP_RANGE_START - $DHCP_RANGE_END"
+echo "TFTP and HTTP servers are set up for network booting"
 echo "TFTP server serving from: $TFTP_ROOT"
 echo "HTTP server serving from: $HTTP_ROOT"
 echo "State API running on port 8080"
 echo "Next server (TFTP): $SERVER_IP"
 echo ""
-echo "Machine registry created with example configurations."
-echo "Edit $MACHINE_CONFIGS_ROOT/registry.json to add your machines."
+echo "Machine registry created with your test machine (a8:a1:59:41:29:0f)."
+echo "Edit $MACHINE_CONFIGS_ROOT/registry.json to add more machines or update configurations."
 echo ""
-echo "Configure your network equipment to use this server ($SERVER_IP) as DHCP server"
-echo "or set DHCP option 66 (TFTP server) to $SERVER_IP and option 67 (boot filename) to 'pxelinux.0'"
+echo "Configure your network router with PXE options:"
+echo "  - Option 66 (TFTP Server): $SERVER_IP"
+echo "  - Option 67 (Boot Filename): pxelinux.0"
+echo "  - TFTP Server: $SERVER_IP"

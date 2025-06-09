@@ -13,8 +13,8 @@ STATE_ROOT="/srv/state"
 LIVE_ROOT="/srv/http/live"
 MACHINE_STATE_ROOT="/srv/http/machine-state"
 NETBOOT_URL="http://ftp.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/netboot.tar.gz"
-DEBIAN_LIVE_URL="https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-12.5.0-amd64-standard.iso"
-DEBIAN_LIVE_ISO="debian-live-12.5.0-amd64-standard.iso"
+DEBIAN_LIVE_URL="https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-12.8.0-amd64-standard.iso"
+DEBIAN_LIVE_ISO="debian-live-12.8.0-amd64-standard.iso"
 KERNEL_PATH="live/vmlinuz"
 INITRD_PATH="live/initrd.img"
 
@@ -64,36 +64,9 @@ sudo cp -rf "$TFTP_ROOT/debian-installer/amd64/grub/"* "$TFTP_ROOT/grub/" 2>/dev
 # Ensure proper ownership
 sudo chown -R tftp:tftp "$TFTP_ROOT"
 
-# Download and extract Debian Live image for stateless booting
-if [ ! -f "$LIVE_ROOT/$DEBIAN_LIVE_ISO" ]; then
-    echo "Downloading Debian Live image..."
-    sudo mkdir -p "$LIVE_ROOT"
-    cd "$LIVE_ROOT"
-    sudo wget -O "$DEBIAN_LIVE_ISO" "$DEBIAN_LIVE_URL"
-    
-    # Mount the ISO to extract files
-    echo "Extracting live boot files..."
-    sudo mkdir -p /tmp/iso-mount
-    sudo mount -o loop "$DEBIAN_LIVE_ISO" /tmp/iso-mount
-    
-    # Extract needed files
-    sudo mkdir -p "$LIVE_ROOT/live"
-    sudo cp -r /tmp/iso-mount/live/vmlinuz "$LIVE_ROOT/live/"
-    sudo cp -r /tmp/iso-mount/live/initrd.img "$LIVE_ROOT/live/"
-    sudo cp -r /tmp/iso-mount/live/filesystem.squashfs "$LIVE_ROOT/live/"
-    
-    # Cleanup
-    sudo umount /tmp/iso-mount
-    sudo rm -rf /tmp/iso-mount
-    
-    # Copy live boot files directly to TFTP root for PXE booting
-    sudo mkdir -p "$TFTP_ROOT/live"
-    sudo cp "$LIVE_ROOT/live/vmlinuz" "$TFTP_ROOT/live/"
-    sudo cp "$LIVE_ROOT/live/initrd.img" "$TFTP_ROOT/live/"
-    
-    # Set proper permissions
-    sudo chown -R www-data:www-data "$LIVE_ROOT"
-fi
+# Skip live boot setup for now - focus on network installer
+echo "Skipping live boot setup - using network installer as primary method"
+echo "Live boot can be configured later if needed"
 
 # Create cloud-init configuration generator script
 sudo tee "$HTTP_ROOT/scripts/generate-cloud-init.sh" > /dev/null <<'EOF'
@@ -228,7 +201,7 @@ sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
       "hostname": "cp-1",
       "role": "worker",
       "architecture": "amd64",
-      "features": ["kubernetes", "nfs", "storage"],
+      "features": ["fernetes", "nfs", "storage"],
       "ip": "10.0.0.20",
       "specs": {
         "cpu": "unknown",
@@ -630,11 +603,6 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# Copy the Kubernetes and device passthrough scripts to HTTP server
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-sudo cp "$SCRIPT_DIR/k8s-control-plane-init.sh" "$HTTP_ROOT/scripts/"
-sudo cp "$SCRIPT_DIR/device-passthrough.sh" "$HTTP_ROOT/scripts/"
-
 # Make scripts executable
 sudo chmod +x "$HTTP_ROOT/scripts/"*.sh
 sudo chmod +x "$HTTP_ROOT/scripts/"*.py
@@ -654,11 +622,6 @@ PROMPT 0
 MENU TITLE Homelab PXE Boot Menu
 TIMEOUT 100
 
-LABEL debian-stateless
-    MENU LABEL Debian Live (Stateless)
-    KERNEL $KERNEL_PATH
-    APPEND initrd=$INITRD_PATH boot=live fetch=http://$SERVER_IP/live/live/filesystem.squashfs ip=dhcp root=/dev/ram0 cloud-config-url=http://$SERVER_IP/cloud-init/\${net:mac}/
-
 LABEL debian-netinstall
     MENU LABEL Debian Network Install (Auto-provision)
     KERNEL debian-installer/amd64/linux
@@ -674,15 +637,22 @@ LABEL local
     LOCALBOOT 0
 EOF
 
+# Add live boot option to PXE menu only if files exist
+if [ -f "$TFTP_ROOT/live/vmlinuz" ] && [ -s "$TFTP_ROOT/live/vmlinuz" ]; then
+    sudo tee -a "$TFTP_ROOT/pxelinux.cfg/default" > /dev/null <<EOF
+
+LABEL debian-stateless
+    MENU LABEL Debian Live (Stateless)
+    KERNEL $KERNEL_PATH
+    APPEND initrd=$INITRD_PATH boot=live fetch=http://$SERVER_IP/live/live/filesystem.squashfs ip=dhcp root=/dev/ram0 cloud-config-url=http://$SERVER_IP/cloud-init/\${net:mac}/
+EOF
+    echo "Live boot option added to PXE menu"
+fi
+
 # Create GRUB configuration for UEFI booting
 sudo tee "$TFTP_ROOT/grub/grub.cfg" > /dev/null <<EOF
 set default="0"
 set timeout=10
-
-menuentry "Debian Live (Stateless)" {
-    linux /live/vmlinuz boot=live fetch=http://$SERVER_IP/live/live/filesystem.squashfs ip=dhcp root=/dev/ram0 cloud-config-url=http://$SERVER_IP/cloud-init/\${net:mac}/
-    initrd /live/initrd.img
-}
 
 menuentry "Debian Network Install (Auto-provision)" {
     linux /debian-installer/amd64/linux auto=true priority=critical preseed/url=http://$SERVER_IP/preseed/preseed.cfg netcfg/get_hostname=unassigned netcfg/get_domain=local debian-installer/allow_unauthenticated_ssl=true
@@ -698,6 +668,20 @@ menuentry "Boot from local disk" {
     exit
 }
 EOF
+
+# Add live boot option only if files exist
+if [ -f "$TFTP_ROOT/live/vmlinuz" ] && [ -s "$TFTP_ROOT/live/vmlinuz" ]; then
+    sudo tee -a "$TFTP_ROOT/grub/grub.cfg" > /dev/null <<EOF
+
+menuentry "Debian Live (Stateless)" {
+    linux /live/vmlinuz boot=live fetch=http://$SERVER_IP/live/live/filesystem.squashfs ip=dhcp root=/dev/ram0 cloud-config-url=http://$SERVER_IP/cloud-init/\${net:mac}/
+    initrd /live/initrd.img
+}
+EOF
+    echo "Live boot option added to GRUB menu"
+else
+    echo "Live boot files not available - using network installer only"
+fi
 
 # Create preseed configuration for automated installation
 sudo tee "$HTTP_ROOT/preseed/preseed.cfg" > /dev/null <<EOF

@@ -121,4 +121,43 @@ sudo journalctl -u kubelet -f
 - Internet connectivity for package downloads
 - Root access on PXE server
 
+## Quick Reference for Homelab Control Plane Scripts
+
+### Remote Deployment
+
+Use the `remote-deploy.sh` script to execute control plane scripts on remote servers via SSH:
+
+```bash
+# Basic usage - uploads and executes script
+./remote-deploy.sh control-plane-boot
+
+# Use custom host
+./remote-deploy.sh -h netboot@10.0.0.3 k8s-control-plane
+
+# Upload scripts only (don't execute)
+./remote-deploy.sh --upload-only control-plane-boot
+
+# Check remote host status
+./remote-deploy.sh status
+
+# View remote logs
+./remote-deploy.sh logs
+
+# Clean up remote temporary files
+./remote-deploy.sh --cleanup
+```
+
+### Direct SSH Execution (Alternative)
+
+If you prefer direct SSH execution:
+
+```bash
+# Upload and execute in one command
+ssh netboot@10.0.0.2 'bash -s' < ~/homelab/provisioning/control-plane/control-plane-boot.sh
+
+# For scripts that need to be present on the remote host
+scp ~/homelab/provisioning/control-plane/*.sh netboot@10.0.0.2:/tmp/
+ssh netboot@10.0.0.2 'cd /tmp && sudo bash control-plane-boot.sh'
+```
+
 For detailed documentation, see `README.md`

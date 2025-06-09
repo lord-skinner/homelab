@@ -14,7 +14,7 @@ DEBIAN_IMAGE_NAME="debian-12-generic-amd64.qcow2"
 NETBOOT_URL="http://ftp.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/netboot.tar.gz"
 
 # Network configuration - adjust these for your network
-DHCP_SUBNET="10.0.0.1"
+DHCP_SUBNET="10.0.0.0"
 DHCP_NETMASK="255.255.255.0"
 DHCP_RANGE_START="10.0.0.200"
 DHCP_RANGE_END="10.0.0.209"
@@ -493,8 +493,9 @@ WantedBy=multi-user.target
 EOF
 
 # Copy the Kubernetes and device passthrough scripts to HTTP server
-sudo cp /home/skinner/homelab/provisioning/control-plane/k8s-control-plane-init.sh "$HTTP_ROOT/scripts/"
-sudo cp /home/skinner/homelab/provisioning/control-plane/device-passthrough.sh "$HTTP_ROOT/scripts/"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+sudo cp "$SCRIPT_DIR/k8s-control-plane-init.sh" "$HTTP_ROOT/scripts/"
+sudo cp "$SCRIPT_DIR/device-passthrough.sh" "$HTTP_ROOT/scripts/"
 
 # Make scripts executable
 sudo chmod +x "$HTTP_ROOT/scripts/"*.sh

@@ -435,3 +435,56 @@ sudo ./k8s-control-plane-init.sh
 6. **Worker Nodes**: Future implementation will use Kubespray for worker node provisioning
 
 For worker node provisioning using Kubespray, see `/home/skinner/homelab/provisioning/worker-nodes/README.md`.
+
+## Remote Deployment
+
+The control plane scripts are designed to be executed on remote servers via SSH. Two deployment methods are available:
+
+### Method 1: Using the Remote Deployment Wrapper (Recommended)
+
+The `remote-deploy.sh` script provides a convenient way to upload and execute scripts on remote hosts:
+
+```bash
+# Set up SSH keys (first time only)
+./ssh-helper.sh setup-keys netboot@10.0.0.2
+
+# Deploy and run control plane boot script
+./remote-deploy.sh control-plane-boot
+
+# Deploy and run Kubernetes control plane initialization
+./remote-deploy.sh k8s-control-plane
+
+# Check remote host status
+./remote-deploy.sh status
+
+# View logs from remote host
+./remote-deploy.sh logs
+```
+
+### Method 2: Direct SSH Execution
+
+For direct execution without the wrapper:
+
+```bash
+# Simple one-liner (for scripts that don't need persistence)
+ssh netboot@10.0.0.2 'bash -s' < ~/homelab/provisioning/control-plane/control-plane-boot.sh
+
+# For scripts that need to be present on the remote host
+scp ~/homelab/provisioning/control-plane/*.sh netboot@10.0.0.2:/tmp/
+ssh netboot@10.0.0.2 'cd /tmp && sudo bash control-plane-boot.sh'
+```
+
+### SSH Setup
+
+Use the SSH helper to configure connectivity:
+
+```bash
+# Test SSH connection
+./ssh-helper.sh test-connection netboot@10.0.0.2
+
+# Set up SSH keys for passwordless authentication
+./ssh-helper.sh setup-keys netboot@10.0.0.2
+
+# Add host to known_hosts
+./ssh-helper.sh add-host netboot@10.0.0.2
+```

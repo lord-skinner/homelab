@@ -43,6 +43,21 @@ if [ ! -f "$TFTP_ROOT/pxelinux.0" ]; then
     sudo chown -R tftp:tftp "$TFTP_ROOT"
 fi
 
+# Set up UEFI boot files in the correct locations
+echo "Setting up UEFI boot files..."
+sudo cp -f "$TFTP_ROOT/debian-installer/amd64/bootnetx64.efi" "$TFTP_ROOT/" 2>/dev/null || true
+sudo cp -f "$TFTP_ROOT/debian-installer/amd64/grubx64.efi" "$TFTP_ROOT/" 2>/dev/null || true
+
+# Create revocations.efi (empty file to prevent TFTP errors)
+sudo touch "$TFTP_ROOT/revocations.efi"
+
+# Copy GRUB configuration and modules to TFTP root
+sudo mkdir -p "$TFTP_ROOT/grub"
+sudo cp -rf "$TFTP_ROOT/debian-installer/amd64/grub/"* "$TFTP_ROOT/grub/" 2>/dev/null || true
+
+# Ensure proper ownership
+sudo chown -R tftp:tftp "$TFTP_ROOT"
+
 # Download Debian cloud image if not already present
 if [ ! -f "$TFTP_ROOT/$DEBIAN_IMAGE_NAME" ]; then
     echo "Downloading Debian cloud image..."
@@ -631,7 +646,7 @@ sudo tee /etc/default/tftpd-hpa > /dev/null <<EOF
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="$TFTP_ROOT"
 TFTP_ADDRESS="0.0.0.0:69"
-TFTP_OPTIONS="--secure --create"
+TFTP_OPTIONS="--secure"
 EOF
 
 # Restart services
@@ -654,5 +669,5 @@ echo "Edit $MACHINE_CONFIGS_ROOT/registry.json to add more machines or update co
 echo ""
 echo "Configure your network router with PXE options:"
 echo "  - Option 66 (TFTP Server): $SERVER_IP"
-echo "  - Option 67 (Boot Filename): pxelinux.0"
+echo "  - Option 67 (Boot Filename): bootnetx64.efi (for UEFI) or pxelinux.0 (for BIOS)"
 echo "  - TFTP Server: $SERVER_IP"

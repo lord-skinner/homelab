@@ -20,7 +20,7 @@ DHCP_RANGE_START="10.0.0.200"
 DHCP_RANGE_END="10.0.0.209"
 DHCP_ROUTER="10.0.0.1"
 DHCP_DNS="8.8.8.8, 8.8.4.4"
-SERVER_IP="10.0.0.10"
+SERVER_IP="10.0.0.2"
 
 # Install required packages
 sudo apt-get update
@@ -112,7 +112,7 @@ sudo tee "$HTTP_ROOT/scripts/machine-state.sh" > /dev/null <<'EOF'
 # Machine state management script
 set -euo pipefail
 
-STATE_SERVER="http://10.0.0.10"
+STATE_SERVER="http://10.0.0.2"
 MAC_ADDRESS=$(cat /sys/class/net/*/address | grep -v "00:00:00:00:00:00" | head -1)
 HOSTNAME=$(hostname)
 
@@ -187,7 +187,7 @@ STATE_SCRIPT="/tmp/machine-state.sh"
 MAC_ADDRESS=$(cat /sys/class/net/*/address | grep -v "00:00:00:00:00:00" | head -1)
 
 # Download state management script
-wget -O "$STATE_SCRIPT" http://10.0.0.10/scripts/machine-state.sh
+wget -O "$STATE_SCRIPT" http://10.0.0.2/scripts/machine-state.sh
 chmod +x "$STATE_SCRIPT"
 
 # Report boot started
@@ -251,12 +251,12 @@ case "$ROLE" in
         "$STATE_SCRIPT" save "k8s-role" "control-plane"
         
         # Download and run device passthrough configuration
-        wget -O /tmp/device-passthrough.sh http://10.0.0.10/scripts/device-passthrough.sh
+        wget -O /tmp/device-passthrough.sh http://10.0.0.2/scripts/device-passthrough.sh
         chmod +x /tmp/device-passthrough.sh
         /tmp/device-passthrough.sh
         
         # Download and run Kubernetes control plane initialization
-        wget -O /tmp/k8s-init.sh http://10.0.0.10/scripts/k8s-control-plane-init.sh
+        wget -O /tmp/k8s-init.sh http://10.0.0.2/scripts/k8s-control-plane-init.sh
         chmod +x /tmp/k8s-init.sh
         /tmp/k8s-init.sh
         ;;
@@ -625,7 +625,7 @@ sudo tee /etc/default/tftpd-hpa > /dev/null <<EOF
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="$TFTP_ROOT"
 TFTP_ADDRESS="0.0.0.0:69"
-TFTP_OPTIONS="--secure"
+TFTP_OPTIONS="--secure --create"
 EOF
 
 # Configure DHCP server
@@ -669,8 +669,11 @@ EOF
 # Restart services
 sudo systemctl restart tftpd-hpa
 sudo systemctl enable tftpd-hpa
-sudo systemctl restart isc-dhcp-server
-sudo systemctl enable isc-dhcp-server
+
+# Stop local DHCP server since we're using Unifi router DHCP with PXE options
+sudo systemctl stop isc-dhcp-server
+sudo systemctl disable isc-dhcp-server
+
 sudo systemctl restart nginx
 sudo systemctl enable nginx
 sudo systemctl enable machine-state-api

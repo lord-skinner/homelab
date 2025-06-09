@@ -41,7 +41,7 @@ usage() {
     echo "  --help              Show this help message"
     echo ""
     echo "Available Scripts:"
-    echo "  control-plane-boot  - Sets up DHCP and TFTP server for network booting"
+    echo "  control-plane-boot  - Sets up stateless boot infrastructure (TFTP/HTTP/State API)"
     echo "  k8s-control-plane   - Initialize Kubernetes control plane"
     echo "  manage-cluster      - Manage cluster operations"
     echo "  manage-machines     - Manage machine configurations"
@@ -53,6 +53,7 @@ usage() {
     echo "  upload              - Upload all scripts to remote host"
     echo "  status              - Check remote host status"
     echo "  logs                - View logs from remote host"
+    echo "  stateless-status    - Check stateless boot infrastructure status"
     echo ""
     echo "Examples:"
     echo "  $0 control-plane-boot"
@@ -104,7 +105,7 @@ execute_remote_script() {
     local script_file=""
     case "$script_name" in
         "control-plane-boot")
-            script_file="control-plane-boot.sh"
+            script_file="control-plane-boot-stateless.sh"
             ;;
         "k8s-control-plane")
             script_file="k8s-control-plane-init.sh"
@@ -157,7 +158,15 @@ get_remote_status() {
         systemctl is-active --quiet isc-dhcp-server && echo 'DHCP Server: Running' || echo 'DHCP Server: Not Running'
         systemctl is-active --quiet tftpd-hpa && echo 'TFTP Server: Running' || echo 'TFTP Server: Not Running'
         systemctl is-active --quiet nginx && echo 'Nginx: Running' || echo 'Nginx: Not Running'
+        systemctl is-active --quiet machine-state-api && echo 'State API: Running' || echo 'State API: Not Running'
         systemctl is-active --quiet kubelet && echo 'Kubelet: Running' || echo 'Kubelet: Not Running'
+        echo ''
+        echo '=== Stateless Boot Infrastructure ==='
+        [ -d /srv/tftp ] && echo 'TFTP Root: Available' || echo 'TFTP Root: Missing'
+        [ -d /srv/http ] && echo 'HTTP Root: Available' || echo 'HTTP Root: Missing'
+        [ -d /srv/state ] && echo 'State Root: Available' || echo 'State Root: Missing'
+        [ -f /srv/http/machines/registry.json ] && echo 'Machine Registry: Available' || echo 'Machine Registry: Missing'
+        [ -f /srv/state/machines.db ] && echo 'State Database: Available' || echo 'State Database: Missing'
         echo ''
         if [ -f /etc/kubernetes/admin.conf ]; then
             echo '=== Kubernetes Status ==='
@@ -179,6 +188,47 @@ view_remote_logs() {
         if [ -f /var/log/provision.log ]; then
             echo '=== Provisioning Logs ==='
             tail -50 /var/log/provision.log
+        fi
+    "
+}
+
+# Check stateless boot infrastructure status
+check_stateless_status() {
+    log "Checking stateless boot infrastructure status on $REMOTE_HOST..."
+    
+    ssh "$REMOTE_HOST" "
+        echo '=== Stateless Boot Infrastructure Status ==='
+        echo ''
+        echo '📁 Directory Structure:'
+        [ -d /srv/tftp ] && echo '✓ TFTP Root: /srv/tftp' || echo '✗ TFTP Root: Missing'
+        [ -d /srv/http ] && echo '✓ HTTP Root: /srv/http' || echo '✗ HTTP Root: Missing'
+        [ -d /srv/state ] && echo '✓ State Root: /srv/state' || echo '✗ State Root: Missing'
+        [ -d /srv/http/machines ] && echo '✓ Machine Configs: /srv/http/machines' || echo '✗ Machine Configs: Missing'
+        [ -d /srv/http/scripts ] && echo '✓ Scripts: /srv/http/scripts' || echo '✗ Scripts: Missing'
+        [ -d /srv/http/cloud-init ] && echo '✓ Cloud-init: /srv/http/cloud-init' || echo '✗ Cloud-init: Missing'
+        echo ''
+        echo '📋 Configuration Files:'
+        [ -f /srv/http/machines/registry.json ] && echo '✓ Machine Registry: Available' || echo '✗ Machine Registry: Missing'
+        [ -f /srv/state/machines.db ] && echo '✓ State Database: Available' || echo '✗ State Database: Missing'
+        [ -f /srv/tftp/pxelinux.cfg/default ] && echo '✓ PXE Config: Available' || echo '✗ PXE Config: Missing'
+        [ -f /srv/tftp/grub/grub.cfg ] && echo '✓ GRUB Config: Available' || echo '✗ GRUB Config: Missing'
+        echo ''
+        echo '🔧 Services:'
+        systemctl is-active --quiet tftpd-hpa && echo '✓ TFTP Server: Running' || echo '✗ TFTP Server: Not Running'
+        systemctl is-active --quiet nginx && echo '✓ HTTP Server: Running' || echo '✗ HTTP Server: Not Running'
+        systemctl is-active --quiet machine-state-api && echo '✓ State API: Running' || echo '✗ State API: Not Running'
+        echo ''
+        echo '🌐 Network Configuration:'
+        ip addr show | grep 'inet 10.0.0' && echo '✓ Server IP configured' || echo '✗ Server IP not found'
+        echo ''
+        if [ -f /srv/http/machines/registry.json ]; then
+            echo '📱 Registered Machines:'
+            jq -r '.machines | to_entries[] | \"  - MAC: \" + .key + \", Host: \" + .value.hostname + \", IP: \" + .value.ip + \", Role: \" + .value.role' /srv/http/machines/registry.json 2>/dev/null || echo '  Error reading registry'
+        fi
+        echo ''
+        if [ -f /srv/state/machines.db ]; then
+            echo '📊 Machine State Summary:'
+            sqlite3 /srv/state/machines.db 'SELECT state, COUNT(*) as count FROM machine_state GROUP BY state;' 2>/dev/null || echo '  No state data available'
         fi
     "
 }
@@ -249,6 +299,9 @@ case "$COMMAND" in
         ;;
     "logs")
         view_remote_logs
+        ;;
+    "stateless-status")
+        check_stateless_status
         ;;
     "control-plane-boot"|"k8s-control-plane"|"manage-cluster"|"manage-machines"|"monitor-machines"|"device-passthrough"|"validate-setup")
         # Upload scripts first (unless upload-only)

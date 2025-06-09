@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sets up TFTP and HTTP servers for network booting with PXE
+# Sets up TFTP and HTTP servers for network booting with PXE for stateless machines
 # DHCP is handled by network router with PXE options configured
 
 set -euo pipefail
@@ -10,9 +10,13 @@ PXE_ROOT="/srv/tftp/pxelinux"
 HTTP_ROOT="/srv/http"
 MACHINE_CONFIGS_ROOT="/srv/http/machines"
 STATE_ROOT="/srv/state"
-DEBIAN_IMAGE_URL="https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2"
-DEBIAN_IMAGE_NAME="debian-12-generic-amd64.qcow2"
+LIVE_ROOT="/srv/http/live"
+MACHINE_STATE_ROOT="/srv/http/machine-state"
 NETBOOT_URL="http://ftp.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/netboot.tar.gz"
+DEBIAN_LIVE_URL="https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-12.5.0-amd64-standard.iso"
+DEBIAN_LIVE_ISO="debian-live-12.5.0-amd64-standard.iso"
+KERNEL_PATH="live/vmlinuz"
+INITRD_PATH="live/initrd.img"
 
 # Network configuration
 SERVER_IP="10.0.0.2"
@@ -30,6 +34,8 @@ sudo mkdir -p "$STATE_ROOT"
 sudo mkdir -p "$HTTP_ROOT/preseed"
 sudo mkdir -p "$HTTP_ROOT/cloud-init"
 sudo mkdir -p "$HTTP_ROOT/scripts"
+sudo mkdir -p "$LIVE_ROOT"
+sudo mkdir -p "$MACHINE_STATE_ROOT"
 sudo chown -R tftp:tftp "$TFTP_ROOT"
 sudo chown -R www-data:www-data "$HTTP_ROOT"
 sudo chown -R root:root "$STATE_ROOT"
@@ -48,8 +54,8 @@ echo "Setting up UEFI boot files..."
 sudo cp -f "$TFTP_ROOT/debian-installer/amd64/bootnetx64.efi" "$TFTP_ROOT/" 2>/dev/null || true
 sudo cp -f "$TFTP_ROOT/debian-installer/amd64/grubx64.efi" "$TFTP_ROOT/" 2>/dev/null || true
 
-# Create revocations.efi (empty file to prevent TFTP errors)
-sudo touch "$TFTP_ROOT/revocations.efi"
+# Remove any existing empty revocations.efi file that might cause boot issues
+sudo rm -f "$TFTP_ROOT/revocations.efi"
 
 # Copy GRUB configuration and modules to TFTP root
 sudo mkdir -p "$TFTP_ROOT/grub"
@@ -58,12 +64,158 @@ sudo cp -rf "$TFTP_ROOT/debian-installer/amd64/grub/"* "$TFTP_ROOT/grub/" 2>/dev
 # Ensure proper ownership
 sudo chown -R tftp:tftp "$TFTP_ROOT"
 
-# Download Debian cloud image if not already present
-if [ ! -f "$TFTP_ROOT/$DEBIAN_IMAGE_NAME" ]; then
-    echo "Downloading Debian cloud image..."
-    sudo wget -O "$TFTP_ROOT/$DEBIAN_IMAGE_NAME" "$DEBIAN_IMAGE_URL"
-    sudo chown tftp:tftp "$TFTP_ROOT/$DEBIAN_IMAGE_NAME"
+# Download and extract Debian Live image for stateless booting
+if [ ! -f "$LIVE_ROOT/$DEBIAN_LIVE_ISO" ]; then
+    echo "Downloading Debian Live image..."
+    sudo mkdir -p "$LIVE_ROOT"
+    cd "$LIVE_ROOT"
+    sudo wget -O "$DEBIAN_LIVE_ISO" "$DEBIAN_LIVE_URL"
+    
+    # Mount the ISO to extract files
+    echo "Extracting live boot files..."
+    sudo mkdir -p /tmp/iso-mount
+    sudo mount -o loop "$DEBIAN_LIVE_ISO" /tmp/iso-mount
+    
+    # Extract needed files
+    sudo mkdir -p "$LIVE_ROOT/live"
+    sudo cp -r /tmp/iso-mount/live/vmlinuz "$LIVE_ROOT/live/"
+    sudo cp -r /tmp/iso-mount/live/initrd.img "$LIVE_ROOT/live/"
+    sudo cp -r /tmp/iso-mount/live/filesystem.squashfs "$LIVE_ROOT/live/"
+    
+    # Cleanup
+    sudo umount /tmp/iso-mount
+    sudo rm -rf /tmp/iso-mount
+    
+    # Copy live boot files directly to TFTP root for PXE booting
+    sudo mkdir -p "$TFTP_ROOT/live"
+    sudo cp "$LIVE_ROOT/live/vmlinuz" "$TFTP_ROOT/live/"
+    sudo cp "$LIVE_ROOT/live/initrd.img" "$TFTP_ROOT/live/"
+    
+    # Set proper permissions
+    sudo chown -R www-data:www-data "$LIVE_ROOT"
 fi
+
+# Create cloud-init configuration generator script
+sudo tee "$HTTP_ROOT/scripts/generate-cloud-init.sh" > /dev/null <<'EOF'
+#!/bin/bash
+# Generates cloud-init configuration for stateless machines
+
+set -euo pipefail
+
+MAC_ADDRESS="$1"
+OUTPUT_DIR="$2"
+REGISTRY_FILE="$3"
+SERVER_IP="$4"
+
+# Get machine info from registry
+MACHINE_INFO=$(jq -r ".machines[\"$MAC_ADDRESS\"] // empty" "$REGISTRY_FILE")
+
+if [ -z "$MACHINE_INFO" ]; then
+    echo "Machine $MAC_ADDRESS not found in registry"
+    exit 1
+fi
+
+HOSTNAME=$(echo "$MACHINE_INFO" | jq -r '.hostname')
+ROLE=$(echo "$MACHINE_INFO" | jq -r '.role')
+IP=$(echo "$MACHINE_INFO" | jq -r '.ip')
+FEATURES=$(echo "$MACHINE_INFO" | jq -r '.features | join(",")')
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Generate meta-data
+cat > "$OUTPUT_DIR/meta-data" <<METAEND
+instance-id: $HOSTNAME
+local-hostname: $HOSTNAME
+METAEND
+
+# Generate network-config
+cat > "$OUTPUT_DIR/network-config" <<NETEND
+version: 2
+ethernets:
+  eth0:
+    match:
+      macaddress: $MAC_ADDRESS
+    addresses:
+      - $IP/24
+    gateway4: 10.0.0.1
+    nameservers:
+      addresses: [8.8.8.8, 8.8.4.4]
+NETEND
+
+# Generate user-data
+cat > "$OUTPUT_DIR/user-data" <<USEREND
+#cloud-config
+
+hostname: $HOSTNAME
+fqdn: $HOSTNAME.local
+
+# Create default user
+users:
+  - name: admin
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: changeme
+    
+# Configure ssh access
+ssh_pwauth: true
+ssh_authorized_keys:
+  - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0WGP1EZykEtv5YGC9nMiRWiST9g+xYbTMRxXhSKxM2Hm5UbE4J1cZxmm6rNDIxTnzTzCcmV1enV1O+GJgXBKEXbMyv9X1S3V5QmyPCBmzuJHTtHQJNA5MzLbI3IIQ5VV7hXJk1oGJpN9xwFMjB4ZDJFwWYzXUeUlGvJXM0xpxgCwVd/YYZYkWJFUGwjY+qfSI4UPoaQFuzW80m4fqQmrW1kEoUm/iKuGDoHUfLwRKOgFDxgRjJXJVyGxIH/TWmTMWvL0+GjHEJlAYRZ1+BDgxsCYbVmJ3lgVw84BZQK3OzeRCQwiOYPAFEfTixwrEn8b9azE+2ry1BHUB8oQr/dLZ admin@server
+
+# Install necessary packages
+packages:
+  - curl
+  - wget
+  - jq
+  - docker.io
+  - containerd
+
+# Run commands after boot
+runcmd:
+  - wget -O /usr/local/bin/machine-state.sh http://$SERVER_IP/scripts/machine-state.sh
+  - chmod +x /usr/local/bin/machine-state.sh
+  - /usr/local/bin/machine-state.sh report "booted" "Machine booted successfully"
+  - wget -O /tmp/provision-machine.sh http://$SERVER_IP/scripts/provision-machine.sh
+  - chmod +x /tmp/provision-machine.sh
+  - /tmp/provision-machine.sh
+USEREND
+
+echo "Generated cloud-init configuration for $HOSTNAME ($MAC_ADDRESS) in $OUTPUT_DIR"
+EOF
+
+# Make the generator script executable
+sudo chmod +x "$HTTP_ROOT/scripts/generate-cloud-init.sh"
+
+# Create stateless boot helper script
+sudo tee "$HTTP_ROOT/scripts/stateless-boot-helper.sh" > /dev/null <<'EOF'
+#!/bin/bash
+# Helper script that runs in the stateless environment during boot
+
+set -euo pipefail
+
+# Determine MAC address
+MAC_ADDRESS=$(cat /sys/class/net/*/address | grep -v "00:00:00:00:00:00" | head -1)
+SERVER_IP="10.0.0.2"
+
+# Report boot status
+curl -X POST "http://$SERVER_IP/api/state" \
+    -H "Content-Type: application/json" \
+    -d "{
+        \"mac\": \"$MAC_ADDRESS\",
+        \"hostname\": \"$(hostname)\",
+        \"state\": \"booting\",
+        \"message\": \"Stateless system booting\",
+        \"timestamp\": \"$(date -Iseconds)\"
+    }"
+
+# Download and run the provisioning script for additional setup
+wget -O /tmp/provision-machine.sh "http://$SERVER_IP/scripts/provision-machine.sh"
+chmod +x /tmp/provision-machine.sh
+/tmp/provision-machine.sh
+EOF
+
+sudo chmod +x "$HTTP_ROOT/scripts/stateless-boot-helper.sh"
 
 # Create machine registry and configurations
 echo "Setting up machine registry and configurations..."
@@ -73,49 +225,14 @@ sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
 {
   "machines": {
     "a8:a1:59:41:29:0f": {
-      "hostname": "test-machine",
+      "hostname": "cp-1",
       "role": "worker",
       "architecture": "amd64",
-      "features": ["kubernetes"],
+      "features": ["kubernetes", "nfs", "storage"],
       "ip": "10.0.0.20",
       "specs": {
         "cpu": "unknown",
         "memory": "unknown"
-      }
-    },
-    "00:11:22:33:44:55": {
-      "hostname": "k8s-cp-1",
-      "role": "control-plane",
-      "architecture": "amd64",
-      "features": ["kubernetes", "nfs", "storage"],
-      "ip": "10.0.0.21",
-      "specs": {
-        "cpu": "4c/4t",
-        "memory": "16GB",
-        "storage": "20TB RAID"
-      }
-    },
-    "00:11:22:33:44:56": {
-      "hostname": "k8s-worker-1", 
-      "role": "worker",
-      "architecture": "amd64",
-      "features": ["kubernetes", "gpu", "inference"],
-      "ip": "10.0.0.22",
-      "specs": {
-        "cpu": "12c/24t",
-        "memory": "64GB",
-        "gpu": "RTX 4090 24GB"
-      }
-    },
-    "00:11:22:33:44:57": {
-      "hostname": "k8s-worker-2",
-      "role": "worker", 
-      "architecture": "amd64",
-      "features": ["kubernetes", "compute"],
-      "ip": "10.0.0.23",
-      "specs": {
-        "cpu": "14c/20t",
-        "memory": "32GB"
       }
     }
   },
@@ -522,12 +639,25 @@ sudo cp "$SCRIPT_DIR/device-passthrough.sh" "$HTTP_ROOT/scripts/"
 sudo chmod +x "$HTTP_ROOT/scripts/"*.sh
 sudo chmod +x "$HTTP_ROOT/scripts/"*.py
 
+# Generate cloud-init configurations for all machines in the registry
+echo "Generating cloud-init configurations for all registered machines..."
+MACHINE_MACS=$(jq -r '.machines | keys[]' "$MACHINE_CONFIGS_ROOT/registry.json")
+for MAC in $MACHINE_MACS; do
+    echo "Generating cloud-init for machine $MAC"
+    sudo "$HTTP_ROOT/scripts/generate-cloud-init.sh" "$MAC" "$HTTP_ROOT/cloud-init/$MAC" "$MACHINE_CONFIGS_ROOT/registry.json" "$SERVER_IP"
+done
+
 # Create PXE boot menu configuration
 sudo tee "$TFTP_ROOT/pxelinux.cfg/default" > /dev/null <<EOF
 DEFAULT menu.c32
 PROMPT 0
 MENU TITLE Homelab PXE Boot Menu
 TIMEOUT 100
+
+LABEL debian-stateless
+    MENU LABEL Debian Live (Stateless)
+    KERNEL $KERNEL_PATH
+    APPEND initrd=$INITRD_PATH boot=live fetch=http://$SERVER_IP/live/live/filesystem.squashfs ip=dhcp root=/dev/ram0 cloud-config-url=http://$SERVER_IP/cloud-init/\${net:mac}/
 
 LABEL debian-netinstall
     MENU LABEL Debian Network Install (Auto-provision)
@@ -542,6 +672,31 @@ LABEL debian-manual
 LABEL local
     MENU LABEL Boot from local disk
     LOCALBOOT 0
+EOF
+
+# Create GRUB configuration for UEFI booting
+sudo tee "$TFTP_ROOT/grub/grub.cfg" > /dev/null <<EOF
+set default="0"
+set timeout=10
+
+menuentry "Debian Live (Stateless)" {
+    linux /live/vmlinuz boot=live fetch=http://$SERVER_IP/live/live/filesystem.squashfs ip=dhcp root=/dev/ram0 cloud-config-url=http://$SERVER_IP/cloud-init/\${net:mac}/
+    initrd /live/initrd.img
+}
+
+menuentry "Debian Network Install (Auto-provision)" {
+    linux /debian-installer/amd64/linux auto=true priority=critical preseed/url=http://$SERVER_IP/preseed/preseed.cfg netcfg/get_hostname=unassigned netcfg/get_domain=local debian-installer/allow_unauthenticated_ssl=true
+    initrd /debian-installer/amd64/initrd.gz
+}
+
+menuentry "Debian Manual Install" {
+    linux /debian-installer/amd64/linux
+    initrd /debian-installer/amd64/initrd.gz
+}
+
+menuentry "Boot from local disk" {
+    exit
+}
 EOF
 
 # Create preseed configuration for automated installation

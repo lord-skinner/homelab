@@ -1,6 +1,12 @@
 #!/bin/bash
 # Sets up TFTP and HTTP servers for network booting stateless machines with cloud-init support
 # DHCP is handled by network router with PXE options configured
+#
+# Version: Updated with improved UEFI boot file handling
+# - Properly downloads and extracts shimx64.efi for UEFI booting
+# - Includes verification steps for TFTP functionality
+# - Handles cross-architecture deployment (ARM64 server serving x86_64 clients)
+# - Installs network diagnostic tools for troubleshooting
 
 set -euo pipefail
 
@@ -13,14 +19,14 @@ LIVE_ROOT="/srv/http/live"
 # Use Ubuntu minimal cloud image for smallest download (~ 287MB vs 3GB+ for live ISO)
 UBUNTU_CLOUD_URL="https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img"
 
-# Ubuntu cloud netboot URLs - stateless optimized
-# Using Focal (20.04 LTS) as it has proven stable netboot support
-UBUNTU_KERNEL_URL="http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/legacy-images/netboot/ubuntu-installer/amd64/linux"
-UBUNTU_INITRD_URL="http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/legacy-images/netboot/ubuntu-installer/amd64/initrd.gz"
+# Ubuntu cloud netboot URLs - using cloud-optimized kernel/initrd
+# Using Ubuntu 22.04 LTS cloud kernel for better cloud-init support
+UBUNTU_KERNEL_URL="https://cloud-images.ubuntu.com/jammy/current/unpacked/jammy-server-cloudimg-amd64-vmlinuz-generic"
+UBUNTU_INITRD_URL="https://cloud-images.ubuntu.com/jammy/current/unpacked/jammy-server-cloudimg-amd64-initrd-generic"
 
-# Alternative: Try standard focal netboot path
-UBUNTU_KERNEL_ALT1="http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/images/netboot/ubuntu-installer/amd64/linux"
-UBUNTU_INITRD_ALT1="http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/images/netboot/ubuntu-installer/amd64/initrd.gz"
+# Alternative: Try Ubuntu 24.04 LTS cloud kernel
+UBUNTU_KERNEL_ALT1="https://cloud-images.ubuntu.com/noble/current/unpacked/noble-server-cloudimg-amd64-vmlinuz-generic"
+UBUNTU_INITRD_ALT1="https://cloud-images.ubuntu.com/noble/current/unpacked/noble-server-cloudimg-amd64-initrd-generic"
 
 # Completely remove Debian fallbacks - Ubuntu cloud netboot only
 
@@ -66,24 +72,72 @@ echo "Setting up UEFI boot files..."
 sudo mkdir -p "$TFTP_ROOT/grub"
 
 # Download Ubuntu UEFI components
-if [ ! -f "$TFTP_ROOT/bootnetx64.efi" ]; then
+if [ ! -f "$TFTP_ROOT/bootnetx64.efi" ] || [ ! -s "$TFTP_ROOT/bootnetx64.efi" ]; then
     echo "Downloading Ubuntu UEFI boot files..."
-    # Try to get UEFI files from Ubuntu netboot
+    # Try to get UEFI files from Ubuntu netboot first
     wget -O "$TFTP_ROOT/bootnetx64.efi" "http://archive.ubuntu.com/ubuntu/dists/jammy/main/uefi/grub2-amd64/current/bootnetx64.efi.signed" 2>/dev/null || {
-        echo "Primary UEFI download failed, using grub-efi-amd64-signed package"
-        sudo apt-get install -y grub-efi-amd64-signed shim-signed
-        sudo cp /usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed "$TFTP_ROOT/bootnetx64.efi" 2>/dev/null || \
-        sudo cp /usr/lib/shim/shimx64.efi "$TFTP_ROOT/bootnetx64.efi"
+        echo "Primary UEFI download failed, downloading shim package..."
+        # Download and extract shim package for x86_64 UEFI boot files
+        cd /tmp
+        wget -O shim.deb "http://archive.ubuntu.com/ubuntu/pool/main/s/shim-signed/shim-signed_1.51.3+15.7-0ubuntu1_amd64.deb" || {
+            echo "Shim package download failed, trying alternative sources..."
+            wget -O "$TFTP_ROOT/bootnetx64.efi" "https://boot.netboot.xyz/ipxe/netboot.xyz.efi" || {
+                echo "Error: Failed to download any UEFI boot file"
+                exit 1
+            }
+        }
+        
+        # Extract shim package if we downloaded it
+        if [ -f "/tmp/shim.deb" ]; then
+            rm -rf /tmp/shim_extract
+            mkdir -p /tmp/shim_extract
+            dpkg-deb -x /tmp/shim.deb /tmp/shim_extract/
+            SHIM_FILE=$(find /tmp/shim_extract -name 'shimx64.efi' -type f | head -1)
+            
+            if [ -n "$SHIM_FILE" ] && [ -f "$SHIM_FILE" ]; then
+                echo "Installing shimx64.efi as bootnetx64.efi"
+                sudo cp "$SHIM_FILE" "$TFTP_ROOT/bootnetx64.efi"
+            fi
+            rm -rf /tmp/shim_extract /tmp/shim.deb
+        fi
     }
+    
+    # Ensure proper ownership and permissions
+    sudo chown tftp:tftp "$TFTP_ROOT/bootnetx64.efi"
+    sudo chmod 644 "$TFTP_ROOT/bootnetx64.efi"
+    
+    # Verify the file is not empty
+    if [ ! -s "$TFTP_ROOT/bootnetx64.efi" ]; then
+        echo "Warning: bootnetx64.efi file is empty or missing - UEFI boot will fail"
+    else
+        echo "UEFI boot file installed successfully ($(stat -c%s "$TFTP_ROOT/bootnetx64.efi") bytes)"
+    fi
 fi
 
-if [ ! -f "$TFTP_ROOT/grubx64.efi" ]; then
+if [ ! -f "$TFTP_ROOT/grubx64.efi" ] || [ ! -s "$TFTP_ROOT/grubx64.efi" ]; then
     echo "Downloading GRUB EFI..."
     wget -O "$TFTP_ROOT/grubx64.efi" "http://archive.ubuntu.com/ubuntu/dists/jammy/main/uefi/grub2-amd64/current/grubnetx64.efi.signed" 2>/dev/null || {
-        sudo apt-get install -y grub-efi-amd64-signed
+        echo "GRUB EFI download failed, trying package installation..."
+        # Note: grub-efi-amd64-signed may not be available on ARM64 hosts
+        # This will be logged but won't stop the script since bootnetx64.efi is the critical file
+        sudo apt-get install -y grub-efi-amd64-signed 2>/dev/null || {
+            echo "Warning: Could not install grub-efi-amd64-signed package on this architecture"
+            echo "Using existing grubx64.efi or skipping (shimx64.efi in bootnetx64.efi should handle boot)"
+        }
+        
+        # Try to copy from system if available
         sudo cp /usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed "$TFTP_ROOT/grubx64.efi" 2>/dev/null || \
-        sudo cp /usr/lib/grub/x86_64-efi/grub.efi "$TFTP_ROOT/grubx64.efi"
+        sudo cp /usr/lib/grub/x86_64-efi/grub.efi "$TFTP_ROOT/grubx64.efi" 2>/dev/null || {
+            echo "Warning: Could not install grubx64.efi - UEFI boot may use shimx64.efi directly"
+        }
     }
+    
+    # Set proper ownership if file exists
+    if [ -f "$TFTP_ROOT/grubx64.efi" ]; then
+        sudo chown tftp:tftp "$TFTP_ROOT/grubx64.efi"
+        sudo chmod 644 "$TFTP_ROOT/grubx64.efi"
+        echo "GRUB EFI file available ($(stat -c%s "$TFTP_ROOT/grubx64.efi") bytes)"
+    fi
 fi
 
 # Install GRUB modules for network booting
@@ -279,7 +333,7 @@ sudo tee "$MACHINE_CONFIGS_ROOT/registry.json" > /dev/null <<EOF
       "role": "worker",
       "architecture": "amd64",
       "features": ["docker"],
-      "ip": "10.0.0.20"
+      "ip": "10.0.0.201"
     }
   },
   "defaults": {
@@ -492,7 +546,7 @@ insmod ext2
 
 menuentry "Ubuntu Cloud Netboot (Stateless Only)" --id ubuntu-stateless {
     echo "Loading Ubuntu cloud netboot kernel..."
-    linux /ubuntu/vmlinuz root=/dev/ram0 ramdisk_size=2097152 ip=dhcp cloud-config-url=http://$SERVER_IP/cloud-init/\${net0/mac}/ ds=nocloud-net;s=http://$SERVER_IP/cloud-init/\${net0/mac}/ console=tty0 console=ttyS0,115200 net.ifnames=0 biosdevname=0 systemd.unified_cgroup_hierarchy=1 cloud-init=network-v2 fsck.mode=skip
+    linux /ubuntu/vmlinuz root=/dev/ram0 ramdisk_size=4194304 ip=dhcp cloud-config-url=http://$SERVER_IP/cloud-init/\${net0/mac}/ ds=nocloud-net;s=http://$SERVER_IP/cloud-init/\${net0/mac}/ console=tty0 console=ttyS0,115200 net.ifnames=0 biosdevname=0 systemd.unified_cgroup_hierarchy=1 cloud-init=network-v2 fsck.mode=skip rd.live.overlay.overlayfs=1 rd.live.overlay.readonly=1 rd.live.check=0
     echo "Loading Ubuntu cloud netboot initrd..."
     initrd /ubuntu/initrd.gz
     echo "Booting Ubuntu cloud stateless system..."
@@ -601,6 +655,12 @@ sudo chown -R tftp:tftp "$TFTP_ROOT"
 sudo chmod -R 755 "$TFTP_ROOT"
 sudo find "$TFTP_ROOT" -type f -exec chmod 644 {} \;
 
+# Install network diagnostic tools
+echo "Installing network diagnostic tools..."
+sudo apt-get install -y netcat-openbsd lsof iptables 2>/dev/null || {
+    echo "Warning: Some network tools could not be installed"
+}
+
 # Restart services
 sudo systemctl restart tftpd-hpa
 sudo systemctl enable tftpd-hpa
@@ -610,6 +670,39 @@ sudo systemctl enable nginx
 
 sudo systemctl enable machine-state-api
 sudo systemctl start machine-state-api
+
+# Verify TFTP service is working
+echo "Verifying TFTP service..."
+sleep 2
+if sudo lsof -i :69 >/dev/null 2>&1; then
+    echo "✓ TFTP server is listening on port 69"
+    
+    # Test TFTP functionality
+    echo "Testing TFTP server functionality..."
+    echo "test" | sudo tee /srv/tftp/test.txt > /dev/null
+    sudo chown tftp:tftp /srv/tftp/test.txt
+    
+    if timeout 10 tftp localhost -c get test.txt /tmp/tftp_test.txt 2>/dev/null; then
+        echo "✓ TFTP server is working correctly"
+    else
+        echo "⚠ TFTP server may have connectivity issues"
+    fi
+    sudo rm -f /srv/tftp/test.txt /tmp/tftp_test.txt
+else
+    echo "⚠ TFTP server is not listening on port 69"
+fi
+
+# Verify critical boot files
+echo ""
+echo "Verifying critical boot files:"
+for file in bootnetx64.efi ubuntu/vmlinuz ubuntu/initrd.gz; do
+    if [ -f "/srv/tftp/$file" ] && [ -s "/srv/tftp/$file" ]; then
+        size=$(stat -c%s "/srv/tftp/$file")
+        echo "✓ $file: ${size} bytes"
+    else
+        echo "✗ $file: missing or empty"
+    fi
+done
 
 echo "TFTP and HTTP servers are set up for stateless network booting"
 echo "TFTP server serving from: $TFTP_ROOT"

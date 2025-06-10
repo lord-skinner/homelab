@@ -209,23 +209,23 @@ check_stateless_status() {
         echo ''
         if [ -f /srv/state/machine-states.json ]; then
             echo '📊 Machine State Summary:'
-            python3 -c "
+            python3 -c '
 import json
 try:
-    with open('/srv/state/machine-states.json', 'r') as f:
+    with open(\"/srv/state/machine-states.json\", \"r\") as f:
         data = json.load(f)
     if data:
         states = {}
         for mac, info in data.items():
-            state = info.get('state', 'unknown')
+            state = info.get(\"state\", \"unknown\")
             states[state] = states.get(state, 0) + 1
         for state, count in states.items():
-            print(f'  {state}: {count}')
+            print(f\"  {state}: {count}\")
     else:
-        print('  No state data available')
+        print(\"  No state data available\")
 except Exception as e:
-    print(f'  Error reading state data: {e}')
-" 2>/dev/null || echo '  No state data available'
+    print(f\"  Error reading state data: {e}\")
+' 2>/dev/null || echo '  No state data available'
         fi
     "
 }
@@ -324,7 +324,6 @@ case "$COMMAND" in
         upload_scripts
         execute_ssh_helper "setup-keys" "$@"
         ;;
-    "stateless-boot"|"ssh-helper")
     "stateless-boot"|"ssh-helper")
         # Upload scripts first (unless upload-only)
         upload_scripts

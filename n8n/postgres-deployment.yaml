@@ -61,22 +61,6 @@ spec:
                 secretKeyRef:
                   name: n8n-postgres-secret
                   key: N8N_POSTGRES_PASSWORD
-            # blinko
-            - name: BLINKO_POSTGRES_DB
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: BLINKO_POSTGRES_DB
-            - name: BLINKO_POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: BLINKO_POSTGRES_USER
-            - name: BLINKO_POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: n8n-postgres-secret
-                  key: BLINKO_POSTGRES_PASSWORD
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data

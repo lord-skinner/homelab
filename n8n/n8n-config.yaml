@@ -9,7 +9,7 @@ data:
       "database": {
         "type": "postgresdb",
         "postgresdb": {
-          "host": "10.43.118.45",
+          "host": "postgres.n8n.svc.cluster.local",
           "port": 5432,
           "database": "n8n",
           "user": "n8n",

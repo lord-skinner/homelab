@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: n8n
+  namespace: n8n
 spec:
   replicas: 1
   selector:
@@ -51,10 +52,11 @@ spec:
               value: "false"
             - name: N8N_RUNNERS_ENABLED
               value: "true"
+
             - name: DB_TYPE
               value: postgresdb
             - name: DB_POSTGRESDB_HOST
-              value: "10.43.118.45"
+              value: "postgres.n8n.svc.cluster.local"
             - name: DB_POSTGRESDB_PORT
               value: "5432"
             - name: DB_POSTGRESDB_DATABASE

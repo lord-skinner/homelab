@@ -1,0 +1,55 @@
+---
+# StorageClass for using control plane NVMe storage
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-nvme
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "2880"
+  fromBackup: ""
+  fsType: "ext4"
+  dataLocality: "best-effort"
+
+---
+# Setting to configure Longhorn to use control plane node
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: create-default-disk-labeled-nodes
+  namespace: longhorn-system
+value: "true"
+
+---
+# Setting to allow scheduling on tainted nodes
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: taint-toleration
+  namespace: longhorn-system
+value: "node-role.kubernetes.io/control-plane=true:NoSchedule;longhorn=dedicated:NoSchedule"
+
+---
+# Setting to ensure system managed components tolerate control plane taint
+apiVersion: longhorn.io/v1beta2
+kind: Setting
+metadata:
+  name: system-managed-components-node-selector
+  namespace: longhorn-system
+value: ""
+
+---
+# Priority class for Longhorn system components
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: longhorn-critical
+value: 1000001
+globalDefault: false
+description: "Priority class for Longhorn critical system components"

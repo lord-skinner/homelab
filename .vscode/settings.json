@@ -7,5 +7,12 @@
   "editor.formatOnSave": true,
   "editor.find.autoFindInSelection": "multiline",
   "github.copilot.chat.codeGeneration.useInstructionFiles": true,
-  "github.copilot.chat.followUps": "always"
+  "chat.tools.urls.autoApprove": {
+    "https://*.github.com/*": true,
+    "https://kubernetes.io/*": true,
+    "https://docs.n8n.io/hosting/*": true,
+  },
+  "chat.tools.terminal.autoApprove": {
+    "kubectl": true,
+  }
 }

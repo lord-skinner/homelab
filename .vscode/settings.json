@@ -11,6 +11,7 @@
     "https://*.github.com/*": true,
     "https://kubernetes.io/*": true,
     "https://docs.n8n.io/hosting/*": true,
+    "https://www.kubeflow.org/docs/*": true,
   },
   "chat.tools.terminal.autoApprove": {
     "kubectl": true,

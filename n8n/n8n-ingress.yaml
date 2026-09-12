@@ -1,0 +1,24 @@
+# n8n at https://automate.home.datalab.gg via the Tailscale->Traefik path.
+# TLS comes from Traefik's default wildcard certificate (TLSStore/default);
+# no per-app Certificate or Secret needed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: automate.home.datalab.gg
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: n8n
+                port:
+                  number: 5678
+  tls:
+    - hosts:
+        - automate.home.datalab.gg

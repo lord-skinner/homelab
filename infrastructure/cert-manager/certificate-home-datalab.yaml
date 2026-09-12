@@ -1,0 +1,20 @@
+# PRODUCTION publicly-trusted wildcard certificate.
+# Covers *.home.datalab.gg plus the apex home.datalab.gg.
+# Secret lives in kube-system (Traefik's namespace) for direct
+# TLSStore default-certificate wiring in a later phase.
+# Staging twin (certificate-home-datalab-staging.yaml) stays as
+# the safe target for future solver debugging -- do NOT debug
+# against this production Certificate.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: home-datalab-gg-wildcard
+  namespace: kube-system
+spec:
+  secretName: home-datalab-gg-wildcard-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - "*.home.datalab.gg"
+    - "home.datalab.gg"

@@ -1,0 +1,14 @@
+# Makes the production wildcard cert Traefik's DEFAULT certificate,
+# so every *.home.datalab.gg route is trusted with no per-app Secrets.
+# Must be named "default" (only supported name) and live where Traefik
+# can read both it and the Secret: kube-system holds both.
+# Secret home-datalab-gg-wildcard-tls is managed by cert-manager
+# (see infrastructure/cert-manager/certificate-home-datalab.yaml).
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: kube-system
+spec:
+  defaultCertificate:
+    secretName: home-datalab-gg-wildcard-tls

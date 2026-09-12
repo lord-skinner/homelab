@@ -1,0 +1,21 @@
+# Let's Encrypt STAGING ClusterIssuer using Cloudflare DNS-01.
+# Purpose: prove DNS-01 works without touching production rate limits.
+# The Cloudflare API token lives ONLY in the in-cluster Secret
+#   cert-manager/cloudflare-api-token  (key: api-token)
+# and is referenced here by name -- never committed to Git.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: mshskinner@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token

@@ -1,0 +1,29 @@
+# Non-secret values for the Tailscale Kubernetes operator.
+# Chart: tailscale/tailscale-operator, PINNED version 1.102.3.
+# Secrets (oauth.clientId / oauth.clientSecret) are passed at install time
+# via --set-string from environment variables -- never stored in this repo.
+# Install/upgrade with:
+#   source ~/.env.sh
+#   helm upgrade --install tailscale-operator tailscale/tailscale-operator \
+#     --namespace tailscale --create-namespace --version 1.102.3 \
+#     -f infrastructure/tailscale/operator-values.yaml \
+#     --set-string oauth.clientId="$TAILSCALE_CLIENT_ID" \
+#     --set-string oauth.clientSecret="$TAILSCALE_CLIENT_SECRET" \
+#     --wait
+operatorConfig:
+  # Must match the tag on the OAuth client (Trust credentials page).
+  defaultTags:
+    - "tag:k8s-operator"
+  hostname: "tailscale-operator"
+
+proxyConfig:
+  # Data-plane proxies (e.g. the traefik-tailscale ingress proxy) carry this.
+  # Phase 8 access-control grants target this tag.
+  # NOTE: must be a tag the operator's OAuth client owns. The chart default
+  # "tag:k8s" was rejected by the Tailscale API (400: tags not permitted),
+  # so proxies share the operator tag, which the OAuth client already has.
+  defaultTags: "tag:k8s-operator"
+
+apiServerProxyConfig:
+  # Deliberately off: the Kubernetes API is NOT exposed over the tailnet.
+  mode: "false"

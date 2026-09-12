@@ -1,0 +1,18 @@
+# STAGING wildcard certificate for *.home.datalab.gg (+ apex).
+# Issued by the staging issuer: NOT publicly trusted, used only to
+# validate the Cloudflare DNS-01 flow end to end.
+# Placed in kube-system (Traefik's namespace) so the later Traefik
+# TLSStore default-certificate wiring needs no cross-namespace copies.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: home-datalab-gg-wildcard-staging
+  namespace: kube-system
+spec:
+  secretName: home-datalab-gg-wildcard-staging-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+    - "*.home.datalab.gg"
+    - "home.datalab.gg"

@@ -10,12 +10,13 @@ Infrastructure as Code for a K3s cluster running on Raspberry Pi 5 nodes.
 | Worker 1–4 | Worker | ARM64 | 8GB each |
 
 - **Runtime**: K3s
-- **Storage**: Longhorn (`longhorn-nvme`)
+- **Storage**: local-path (K3s default)
 - **Ingress**: Traefik (K3s default) — will be replaced by Istio for Kubeflow
 
 ## Applications
 
 - **[n8n](n8n/)** — Workflow automation platform with PostgreSQL backend
+- **[filebrowser](filebrowser/)** — File management UI backed by local storage (NAS mount pending network access)
 
 ---
 
@@ -50,7 +51,7 @@ Deploy the full Kubeflow ML platform on an all-ARM64 Raspberry Pi 5 cluster usin
 ### Phase 2: Kubeflow Pipelines
 
 - [ ] **Argo Workflows** — Pipeline execution engine (ARM64 images available)
-- [ ] **MinIO** — Artifact storage on `longhorn-nvme` PVCs (ARM64 images available)
+- [ ] **MinIO** — Artifact storage on `local-path` PVCs (ARM64 images available)
 - [ ] **Pipeline components** — API server, persistence agent, scheduler, UI, metadata services
 - [ ] **Verify** — Create and execute a simple pipeline, confirm artifact storage
 

@@ -31,7 +31,8 @@ spec:
               topologyKey: "kubernetes.io/hostname"
       containers:
         - name: n8n
-          image: n8nio/n8n
+          # Pinned digest (was floating n8nio/n8n:latest) for reproducible deploys.
+          image: n8nio/n8n@sha256:9f21fbf422982bbdddc31085c180bef82d59cc608ba16dfec4fc48611d0b51b8
           env:
             - name: N8N_PORT
               value: "5678"
@@ -50,7 +51,16 @@ spec:
               value: "true"
             - name: N8N_DISABLE_PRODUCTION_MAIN_PROCESS
               value: "false"
-
+            - name: N8N_RUNNERS_ENABLED
+              value: "true"
+            # External URL behind Traefik TLS (Ingress automate.home.datalab.gg).
+            # Tells n8n its public scheme/host for redirects and webhooks.
+            - name: N8N_HOST
+              value: "automate.home.datalab.gg"
+            - name: N8N_PROTOCOL
+              value: "https"
+            - name: WEBHOOK_URL
+              value: "https://automate.home.datalab.gg/"
             - name: DB_TYPE
               value: postgresdb
             - name: DB_POSTGRESDB_HOST

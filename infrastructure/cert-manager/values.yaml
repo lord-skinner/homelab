@@ -1,0 +1,16 @@
+# Non-secret values for cert-manager.
+# Chart: jetstack/cert-manager, PINNED version v1.21.1 (live: cert-manager-v1.21.1).
+# Install/upgrade with:
+#   helm repo add jetstack https://charts.jetstack.io
+#   helm repo update
+#   helm upgrade --install cert-manager jetstack/cert-manager \
+#     --namespace cert-manager --create-namespace --version v1.21.1 \
+#     -f infrastructure/cert-manager/values.yaml \
+#     --wait
+# Cloudflare DNS-01 credential is a separate in-cluster Secret
+#   cert-manager/cloudflare-api-token (key: api-token), created via:
+#   kubectl create secret generic cloudflare-api-token -n cert-manager \
+#     --from-literal=api-token="$CLOUDFLARE_TOKEN"
+# Never store the token in Git. ClusterIssuers reference it by name.
+crds:
+  enabled: true

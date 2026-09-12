@@ -1,0 +1,33 @@
+# Dedicated Tailscale entry point for the EXISTING k3s Traefik.
+# Additive only: the stock k3s Service kube-system/traefik is untouched.
+# Selector and targetPorts copied VERBATIM from that Service (Phase 0):
+#   selector app.kubernetes.io/instance=traefik-kube-system,
+#            app.kubernetes.io/name=traefik
+#   targetPort web      (= container 8000, HTTP)
+#   targetPort websecure (= container 8443, HTTPS)
+# loadBalancerClass: tailscale -> handled by the Tailscale operator only;
+# klipper-lb (svclb) ignores it, so no public/LAN LoadBalancer is created.
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-tailscale
+  namespace: kube-system
+  annotations:
+    tailscale.com/hostname: home-ingress
+spec:
+  type: LoadBalancer
+  loadBalancerClass: tailscale
+  # No NodePorts: this Service is reachable only via the tailnet.
+  allocateLoadBalancerNodePorts: false
+  selector:
+    app.kubernetes.io/instance: traefik-kube-system
+    app.kubernetes.io/name: traefik
+  ports:
+    - name: http
+      port: 80
+      targetPort: web
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: websecure
+      protocol: TCP

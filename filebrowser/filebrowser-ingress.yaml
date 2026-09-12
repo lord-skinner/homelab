@@ -1,0 +1,25 @@
+# FileBrowser at https://nas.home.datalab.gg via the Tailscale->Traefik path.
+# TLS comes from Traefik's default wildcard certificate (TLSStore/default);
+# no per-app Certificate or Secret needed.
+# DNS already covers it via the wildcard *.home.datalab.gg record.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: filebrowser
+  namespace: filebrowser
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: nas.home.datalab.gg
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: filebrowser
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - nas.home.datalab.gg

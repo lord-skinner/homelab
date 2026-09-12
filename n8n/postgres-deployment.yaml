@@ -16,7 +16,8 @@ spec:
       securityContext: {}
       containers:
         - name: postgres
-          image: postgres:16
+          # Pinned digest (was floating postgres:16) for reproducible deploys.
+          image: postgres@sha256:b477759d38be47671d54a054d832791f8ddb9f0eaf6faf51ed17516087793a66
           ports:
             - containerPort: 5432
           livenessProbe:
@@ -68,8 +69,11 @@ spec:
               mountPath: /docker-entrypoint-initdb.d/init-data.sh
               subPath: init-data.sh
       volumes:
+        # Persistent storage: survives pod rescheduling and node loss.
+        # (Previously emptyDir: all data was lost if the pod moved nodes.)
         - name: postgres-storage
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: postgres-pvc
         - name: init-script
           configMap:
             name: postgres-init-script

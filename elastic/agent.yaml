@@ -42,6 +42,14 @@ spec:
             version: 0.2.8
         data_stream:
           namespace: k8s
+        # Elastic Agent 9.5's EDOT path can emit otelcol.signal as an object
+        # for Kubernetes metrics. The existing logs data stream maps this
+        # internal transport field as text, so discard it before export.
+        processors:
+          - drop_fields:
+              fields:
+                - otelcol.signal
+              ignore_missing: true
         streams:
           - id: kubernetes/metrics-apiserver
             data_stream:

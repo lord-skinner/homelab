@@ -1,0 +1,10 @@
+# Agent Router v1.1.0. The controller watches the namespace containing the
+# declarative model catalog and routes; Envoy Gateway watches inference too.
+controller:
+      watch:
+        namespaces:
+          - inference
+          - kube-system
+          - n8n
+          - nextcloud
+          - elastic-stack

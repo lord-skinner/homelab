@@ -1,0 +1,135 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: ollama
+  namespace: inference
+spec:
+  endpoints:
+    - fqdn:
+        hostname: ollama.inference.svc.cluster.local
+        port: 11434
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: ollama-qwen3-14b
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: ollama-qwen2-5-coder-14b
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: ollama-deepseek-r1-14b
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: ollama-phi4-14b
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: ollama-gemma3-12b
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: ollama-models
+  namespace: inference
+spec:
+  hostnames:
+    - llm.home.datalab.gg
+  parentRefs:
+    - name: home-ingress
+      namespace: kube-system
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: qwen3:14b
+      backendRefs:
+        - name: ollama-qwen3-14b
+          modelNameOverride: qwen3:14b
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: qwen2.5-coder:14b
+      backendRefs:
+        - name: ollama-qwen2-5-coder-14b
+          modelNameOverride: qwen2.5-coder:14b
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: deepseek-r1:14b
+      backendRefs:
+        - name: ollama-deepseek-r1-14b
+          modelNameOverride: deepseek-r1:14b
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: phi4:14b
+      backendRefs:
+        - name: ollama-phi4-14b
+          modelNameOverride: phi4:14b
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gemma3:12b
+      backendRefs:
+        - name: ollama-gemma3-12b
+          modelNameOverride: gemma3:12b

@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: semantic-router
+  namespace: vllm-semantic-router-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: semantic-router
+      app.kubernetes.io/instance: semantic-router
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

@@ -8,8 +8,9 @@ Run the non-mutating check from a workstation with access to the cluster:
 
 It checks node readiness and pressure, Deployment/StatefulSet/DaemonSet
 availability, PVC phase, PostgreSQL role/probe noise, ingress Service ports and
-endpoints, Prometheus alerts and `up == 0` targets, recent restarts, recurring
-CSI-SMB/Traefik/Elastic Agent errors, valid hostname TLS, application smoke
+endpoints, Gateway API and Envoy proxy conditions/endpoints, Prometheus alerts
+and `up == 0` targets, recent restarts, recurring CSI-SMB/Traefik/Envoy/Elastic
+Agent errors, valid hostname TLS, application smoke
 endpoints, and complete Filebrowser removal. It uses a local Prometheus
 port-forward and makes no Kubernetes resource changes.
 

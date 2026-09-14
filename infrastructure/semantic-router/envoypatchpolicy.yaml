@@ -1,0 +1,55 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: semantic-router-extproc
+  namespace: kube-system
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: home-ingress
+  type: JSONPatch
+  jsonPatches:
+    - name: kube-system/home-ingress/https
+      type: type.googleapis.com/envoy.config.listener.v3.Listener
+      operation:
+        op: add
+        path: /filter_chains/0/filters/0/typed_config/http_filters/0
+        value:
+          name: semantic-router-extproc
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+            allow_mode_override: true
+            grpc_service:
+              envoy_grpc:
+                authority: semantic-router.vllm-semantic-router-system:50051
+                cluster_name: semantic-router-extproc
+              timeout: 60s
+            message_timeout: 60s
+            processing_mode:
+              request_header_mode: SEND
+              request_body_mode: BUFFERED
+              request_trailer_mode: SKIP
+              response_header_mode: SEND
+              response_body_mode: BUFFERED
+              response_trailer_mode: SKIP
+    - name: semantic-router-extproc
+      type: type.googleapis.com/envoy.config.cluster.v3.Cluster
+      operation:
+        op: add
+        path: ''
+        value:
+          name: semantic-router-extproc
+          connect_timeout: 60s
+          type: STRICT_DNS
+          lb_policy: ROUND_ROBIN
+          http2_protocol_options: {}
+          load_assignment:
+            cluster_name: semantic-router-extproc
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: semantic-router.vllm-semantic-router-system.svc.cluster.local
+                          port_value: 50051

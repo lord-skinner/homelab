@@ -11,7 +11,7 @@ Infrastructure as Code for a K3s cluster running on Raspberry Pi 5 nodes.
 
 - **Runtime**: K3s
 - **Storage**: local-path (K3s default)
-- **Ingress**: Traefik (K3s default)
+- **Ingress**: Envoy Gateway (Gateway API), with Traefik retained during migration rollback
 
 ## Applications
 

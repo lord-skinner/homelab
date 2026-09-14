@@ -1,0 +1,25 @@
+# Envoy Gateway v1.9.1 values. Gateway Namespace Mode puts the generated
+# proxy Deployment and Service in the Gateway namespace (kube-system).
+crds:
+  # Gateway API CRDs are applied explicitly by install-envoy-gateway.sh so an
+  # existing provider-managed CRD installation can be upgraded safely.
+  enabled: false
+
+config:
+  envoyGateway:
+    provider:
+      type: Kubernetes
+      kubernetes:
+        deploy:
+          type: GatewayNamespace
+        watch:
+          type: Namespaces
+          namespaces:
+            - kube-system
+            - n8n
+            - nextcloud
+            - elastic-stack
+            - inference
+
+deployment:
+  replicas: 1

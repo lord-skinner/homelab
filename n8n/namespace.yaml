@@ -3,3 +3,5 @@ kind: Namespace
 metadata:
   annotations: {}
   name: n8n
+  labels:
+    gateway-access: home-ingress

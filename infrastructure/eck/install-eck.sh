@@ -17,6 +17,7 @@ kubectl apply -f "$REPO_ROOT/elastic/kibana.yaml"
 kubectl apply -f "$REPO_ROOT/elastic/agent-rbac.yaml"
 kubectl apply -f "$REPO_ROOT/elastic/agent.yaml"
 kubectl apply -f "$REPO_ROOT/elastic/ingress.yaml"
+kubectl apply -f "$REPO_ROOT/elastic/kibana-httproute.yaml"
 
 echo "Elastic Stack resources applied. Monitor with:"
 echo "  kubectl -n elastic-stack get elasticsearch,kibana,agent,pods"

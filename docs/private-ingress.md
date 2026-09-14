@@ -1,21 +1,22 @@
-# Private ingress: Tailscale -> Traefik -> apps (`*.home.datalab.gg`)
+# Private ingress: Tailscale -> Envoy Gateway -> apps (`*.home.datalab.gg`)
 
 ## Architecture
 
-Remote Tailscale client -> tailnet -> Tailscale operator -> Service
-`kube-system/traefik-tailscale` (`loadBalancerClass: tailscale`,
-device `home-ingress`, `100.111.204.32`) -> existing k3s Traefik
-(ClusterIP `10.43.75.249`) -> per-app ClusterIP Services.
+Remote Tailscale client -> tailnet -> Tailscale operator -> Envoy Gateway
+Service in `kube-system` (`loadBalancerClass: tailscale`) -> per-app ClusterIP
+Services. The live Envoy device is `home-ingress` at `100.125.103.115`; the
+former Traefik device remains available as `home-ingress-traefik` at
+`100.111.204.32` during the rollback soak period.
 
-Traefik terminates TLS with the shared production wildcard certificate.
+Envoy Gateway terminates TLS with the shared production wildcard certificate.
 No router port forwarding. No public LoadBalancer. No per-app Tailscale
-services. The k3s-managed Traefik Service/Deployment are never edited;
-everything here is additive.
+services. The existing Traefik resources remain available as rollback during
+the migration.
 
 ## Domains
 
 - `*.home.datalab.gg` and `home.datalab.gg` resolve (public DNS-only A
-  records) to the Tailscale IP `100.111.204.32`. DNS visibility is public
+  records) to the Tailscale IP `100.125.103.115`. DNS visibility is public
   but `100.64.0.0/10` is unroutable off-tailnet: only tailnet members can
   connect. Verified: off-tailnet TCP 443 times out.
 - If the `traefik-tailscale` Service is ever deleted/recreated, the proxy
@@ -33,7 +34,7 @@ everything here is additive.
 - Production wildcard: `Certificate/kube-system/home-datalab-gg-wildcard`
   -> Secret `kube-system/home-datalab-gg-wildcard-tls`
   (`*.home.datalab.gg`, `home.datalab.gg`), auto-renewed.
-- `TLSStore/kube-system/default` makes it Traefik's default certificate.
+- `Gateway/kube-system/home-ingress` references the wildcard Secret directly.
 
 ## Tailscale operator
 
@@ -53,30 +54,26 @@ everything here is additive.
 Only two things, e.g. for `example.home.datalab.gg`:
 
 1. A normal ClusterIP Service (no NodePort/LoadBalancer).
-2. An Ingress like this (no per-app certificate needed):
+2. An HTTPRoute attached to `kube-system/home-ingress` (no per-app
+   certificate needed). The application namespace must carry the
+   `gateway-access: home-ingress` label.
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: example
   namespace: example-ns
 spec:
-  ingressClassName: traefik
+  parentRefs:
+    - name: home-ingress
+      namespace: kube-system
+      sectionName: https
+  hostnames: [example.home.datalab.gg]
   rules:
-    - host: example.home.datalab.gg
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: example
-                port:
-                  number: 80
-  tls:
-    - hosts:
-        - example.home.datalab.gg
+    - backendRefs:
+        - name: example
+          port: 80
 ```
 
 DNS already covers it via the wildcard record. Never create another
@@ -98,10 +95,11 @@ python3 -c "import socket; print(socket.gethostbyname('automate.home.datalab.gg'
 kubectl get certificate,certificaterequest,order,challenge -n kube-system
 kubectl describe order -n kube-system <order-name>
 
-# Traefik / routing
-kubectl get tlsstore -n kube-system
-kubectl get ingress -A
-kubectl get svc -n kube-system traefik-tailscale -o jsonpath='{.spec}'
+# Envoy Gateway / routing
+kubectl get gatewayclass envoy
+kubectl get gateway,httproute -A
+kubectl -n kube-system get svc -l gateway.envoyproxy.io/owning-gateway-name=home-ingress -o wide
+kubectl -n kube-system get svc traefik-tailscale -o jsonpath='{.spec}'  # rollback path
 kubectl run curl-test --image=curlimages/curl:8.22.0 --restart=Never --rm -i \
   --command -- curl -sv --resolve automate.home.datalab.gg:443:10.43.75.249 \
   https://automate.home.datalab.gg/
@@ -114,16 +112,16 @@ curl -v https://automate.home.datalab.gg/
 ## Live private service
 
 - n8n at `https://automate.home.datalab.gg` (`n8n/` manifests: ClusterIP
-  Service + Ingress; `N8N_HOST`/`N8N_PROTOCOL`/`WEBHOOK_URL` env match the
+  Service + HTTPRoute; `N8N_HOST`/`N8N_PROTOCOL`/`WEBHOOK_URL` env match the
   public URL). The temporary `test` validation namespace was removed after
   proving the path.
 - Nextcloud at `https://nas.home.datalab.gg` (`nextcloud/` manifests:
-  ClusterIP Service + Ingress, MariaDB, Redis, and an SMB CSI-backed PVC for
+  ClusterIP Service + HTTPRoute, MariaDB, Redis, and an SMB CSI-backed PVC for
   application/data storage). The old FileBrowser resources are removed.
 
   The data PVC uses the dedicated `nextcloud` subdirectory of the NAS's
   `NetworkShare` export at `192.168.0.242`; existing share contents are not
   mounted as part of Nextcloud.
 - Kibana at `https://es.home.datalab.gg` (`elastic/` manifests; ECK-managed
-  Kibana service behind the same private Traefik ingress). Elasticsearch,
+  Kibana service behind the same private Envoy Gateway). Elasticsearch,
   Kibana, and Elastic Agent are version 9.5.3.

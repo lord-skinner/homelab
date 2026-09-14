@@ -11,7 +11,8 @@ cp .env.example .env
 ```
 
 The script creates/updates the `nextcloud-secrets` Kubernetes Secret and
-applies the namespace, MariaDB, Redis, Nextcloud, Service, Ingress, and cron
+applies the namespace, MariaDB, Redis, Nextcloud, Service, Ingress/HTTPRoute,
+and cron
 manifests.
 
 The `nextcloud-data` PVC is backed by the NAS's `NetworkShare` Samba export.

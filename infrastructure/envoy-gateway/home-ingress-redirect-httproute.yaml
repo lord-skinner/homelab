@@ -1,0 +1,19 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: home-ingress-https-redirect
+  namespace: kube-system
+spec:
+  parentRefs:
+    - name: home-ingress
+      sectionName: http
+  hostnames:
+    - automate.home.datalab.gg
+    - nas.home.datalab.gg
+    - es.home.datalab.gg
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

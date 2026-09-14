@@ -1,0 +1,31 @@
+# Envoy Gateway watches EndpointSlices in its own namespace in addition to
+# the explicitly watched application namespaces. The v1.9.1 Gateway Namespace
+# Mode chart does not currently include this controller-namespace permission.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: envoy-gateway-controller-endpointslices
+  namespace: envoy-gateway-system
+rules:
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: envoy-gateway-controller-endpointslices
+  namespace: envoy-gateway-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: envoy-gateway-controller-endpointslices
+subjects:
+  - kind: ServiceAccount
+    name: envoy-gateway
+    namespace: envoy-gateway-system

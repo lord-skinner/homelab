@@ -62,6 +62,100 @@ while IFS=$'\t' read -r ns ingress service port; do
   [[ -n "$endpoints" ]] && pass "Ingress $ns/$ingress -> $service:$port has endpoints" || fail "Ingress $ns/$ingress -> $service:$port has no ready endpoints"
 done < <(jq -r '.items[] as $i | ($i.spec.rules // [])[] as $rule | ($rule.http.paths // [])[] | [$i.metadata.namespace,$i.metadata.name,.backend.service.name,(.backend.service.port.number // .backend.service.port.name // "")] | @tsv' <<<"$ingress_json")
 
+section "Envoy Gateway resources"
+gatewayclass_json="$(kubectl get gatewayclass envoy -o json 2>/dev/null || echo '{}')"
+if jq -e '[.status.conditions[]? | select(.type == "Accepted" and .status == "True")] | length > 0' <<<"$gatewayclass_json" >/dev/null; then
+  pass "GatewayClass envoy Accepted=True"
+else
+  fail "GatewayClass envoy is not Accepted=True"
+fi
+
+gateway_json="$(kubectl -n kube-system get gateway home-ingress -o json 2>/dev/null || echo '{}')"
+for condition in Accepted Programmed; do
+  if jq -e --arg type "$condition" '[.status.conditions[]? | select(.type == $type and .status == "True")] | length > 0' <<<"$gateway_json" >/dev/null; then
+    pass "Gateway kube-system/home-ingress $condition=True"
+  else
+    fail "Gateway kube-system/home-ingress is not $condition=True"
+  fi
+done
+if jq -e '[.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length > 0' <<<"$gateway_json" >/dev/null; then
+  pass "Gateway kube-system/home-ingress Ready=True"
+elif jq -e '(.status.conditions // []) as $c | ([.status.listeners[]?.conditions[]? | select(.type == "Programmed" and .status == "True")] | length) == ([.status.listeners[]?] | length) and ([.status.listeners[]?] | length) > 0 and ([$c[] | select(.type == "Programmed" and .status == "True")] | length) > 0' <<<"$gateway_json" >/dev/null; then
+  # Envoy Gateway v1.9 reports readiness as top-level Programmed plus
+  # listener Programmed conditions rather than a top-level Ready condition.
+  pass "Gateway kube-system/home-ingress Ready (inferred from Programmed listeners)"
+else
+  fail "Gateway kube-system/home-ingress has no Ready=True or equivalent programmed listeners"
+fi
+
+httproutes_json="$(kubectl get httproute -A -o json 2>/dev/null || echo '{"items":[]}')"
+route_count="$(jq '[.items[] | select(.metadata.annotations["gateway.envoyproxy.io/ai-gateway-generated"] != "true")] | length' <<<"$httproutes_json")"
+if [[ "$route_count" -eq 0 ]]; then
+  fail "no HTTPRoutes found"
+else
+  while IFS=$'\t' read -r ns name accepted resolved; do
+    [[ -z "$name" ]] && continue
+    [[ "$accepted" == true ]] && pass "HTTPRoute $ns/$name Accepted=True" || fail "HTTPRoute $ns/$name is not Accepted=True"
+    [[ "$resolved" == true ]] && pass "HTTPRoute $ns/$name ResolvedRefs=True" || fail "HTTPRoute $ns/$name is not ResolvedRefs=True"
+  done < <(jq -r '.items[] | select(.metadata.annotations["gateway.envoyproxy.io/ai-gateway-generated"] != "true") | [.metadata.namespace,.metadata.name,([.status.parents[]?.conditions[]? | select(.type == "Accepted" and .status == "True")] | length > 0),([.status.parents[]?.conditions[]? | select(.type == "ResolvedRefs" and .status == "True")] | length > 0)] | @tsv' <<<"$httproutes_json")
+fi
+
+ai_controller_json="$(kubectl -n envoy-ai-gateway-system get deployment ai-gateway-controller -o json 2>/dev/null || echo '{}')"
+if jq -e '(.status.availableReplicas // 0) == (.spec.replicas // 0) and (.spec.replicas // 0) > 0' <<<"$ai_controller_json" >/dev/null; then
+  pass "Agent Router controller is available"
+else
+  fail "Agent Router controller is unavailable"
+fi
+
+ai_backends_json="$(kubectl get aiservicebackend -A -o json 2>/dev/null || echo '{"items":[]}')"
+ai_backend_count="$(jq '.items | length' <<<"$ai_backends_json")"
+if [[ "$ai_backend_count" -eq 0 ]]; then
+  fail "no AIServiceBackends found"
+else
+  while IFS=$'\t' read -r ns name accepted; do
+    [[ -z "$name" ]] && continue
+    [[ "$accepted" == true ]] && pass "AIServiceBackend $ns/$name Accepted=True" || fail "AIServiceBackend $ns/$name is not Accepted=True"
+  done < <(jq -r '.items[] | [.metadata.namespace,.metadata.name,([.status.conditions[]? | select(.type == "Accepted" and .status == "True")] | length > 0)] | @tsv' <<<"$ai_backends_json")
+fi
+
+ai_routes_json="$(kubectl get aigatewayroute -A -o json 2>/dev/null || echo '{"items":[]}')"
+ai_route_count="$(jq '.items | length' <<<"$ai_routes_json")"
+if [[ "$ai_route_count" -eq 0 ]]; then
+  fail "no AIGatewayRoutes found"
+else
+  while IFS=$'\t' read -r ns name accepted; do
+    [[ -z "$name" ]] && continue
+    [[ "$accepted" == true ]] && pass "AIGatewayRoute $ns/$name Accepted=True" || fail "AIGatewayRoute $ns/$name is not Accepted=True"
+  done < <(jq -r '.items[] | [.metadata.namespace,.metadata.name,([.status.conditions[]? | select(.type == "Accepted" and .status == "True")] | length > 0)] | @tsv' <<<"$ai_routes_json")
+fi
+
+semantic_router_json="$(kubectl -n vllm-semantic-router-system get deployment semantic-router -o json 2>/dev/null || echo '{}')"
+if jq -e '(.status.availableReplicas // 0) == (.spec.replicas // 0) and (.spec.replicas // 0) > 0' <<<"$semantic_router_json" >/dev/null; then
+  pass "vLLM Semantic Router is available"
+else
+  fail "vLLM Semantic Router is unavailable"
+fi
+semantic_router_endpoints="$(kubectl -n vllm-semantic-router-system get endpoints semantic-router -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' 2>/dev/null || true)"
+[[ -n "$semantic_router_endpoints" ]] && pass "Semantic Router gRPC Service has ready endpoints" || fail "Semantic Router gRPC Service has no ready endpoints"
+
+semantic_policy_json="$(kubectl -n kube-system get envoypatchpolicy semantic-router-extproc -o json 2>/dev/null || echo '{}')"
+for condition in Accepted Programmed; do
+  if jq -e --arg type "$condition" '[.status.ancestors[]?.conditions[]? | select(.type == $type and .status == "True")] | length > 0' <<<"$semantic_policy_json" >/dev/null; then
+    pass "EnvoyPatchPolicy kube-system/semantic-router-extproc $condition=True"
+  else
+    fail "EnvoyPatchPolicy kube-system/semantic-router-extproc is not $condition=True"
+  fi
+done
+
+proxy_service="$(kubectl -n kube-system get svc -l gateway.envoyproxy.io/owning-gateway-name=home-ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+proxy_deployment="$(kubectl -n kube-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=home-ingress -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+if [[ -n "$proxy_service" ]]; then
+  proxy_endpoints="$(kubectl -n kube-system get endpoints "$proxy_service" -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' 2>/dev/null || true)"
+  [[ -n "$proxy_endpoints" ]] && pass "Envoy proxy Service $proxy_service has ready endpoints" || fail "Envoy proxy Service $proxy_service has no ready endpoints"
+else
+  fail "no Envoy proxy Service found for Gateway home-ingress"
+fi
+
 section "Prometheus alerts and scrape targets"
 pf_log="$(mktemp)"
 kubectl -n "$PROM_NAMESPACE" port-forward "svc/$PROM_SERVICE" 19090:9090 >"$pf_log" 2>&1 & pf_pid=$!
@@ -90,6 +184,15 @@ done < <(kubectl get pods -A -o json 2>/dev/null | jq -r '.items[] as $p | ($p.s
 check_log() { local label=$1 ns=$2 resource=$3 pattern=$4 count; count="$(kubectl -n "$ns" logs "$resource" --since="$LOG_WINDOW" --all-containers=true 2>/dev/null | grep -Eic "$pattern" || true)"; [[ "$count" -eq 0 ]] && pass "$label: no matches in $LOG_WINDOW" || fail "$label: $count match(es) in $LOG_WINDOW"; }
 check_log "CSI-SMB errors" kube-system daemonset/csi-smb-node 'error|fail|socket.*warn'
 check_log "Traefik backend errors" kube-system deploy/traefik 'service.*not found|endpoints.*not found|backend.*error'
+check_log "Envoy Gateway controller errors" envoy-gateway-system deploy/envoy-gateway '(^|[[:space:]])(error|ERROR|fatal|FATAL|panic|PANIC)([[:space:]]|$)|"log.level":"error"'
+check_log "Agent Router controller errors" envoy-ai-gateway-system deploy/ai-gateway-controller '(^|[[:space:]])(error|ERROR|fatal|FATAL|panic|PANIC)([[:space:]]|$)|"log.level":"error"'
+if [[ -n "${proxy_service:-}" ]]; then
+  if [[ -n "${proxy_deployment:-}" ]]; then
+    check_log "Envoy proxy configuration/upstream errors" kube-system "deploy/$proxy_deployment" '"response_flags":"[^-]|configuration.*(error|rejected)|cluster.*(warming|unhealthy)'
+  else
+    fail "Envoy proxy Service exists but its Deployment was not found"
+  fi
+fi
 check_log "Elastic Agent export failures" elastic-stack daemonset/elastic-agent-agent 'export.*fail|failed.*export|export.*error'
 
 section "Application smoke checks with certificate validation"

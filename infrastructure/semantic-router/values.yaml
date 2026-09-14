@@ -1,0 +1,183 @@
+# vLLM Semantic Router ExtProc configuration for the existing Envoy Gateway.
+# Keep this release CPU-only; the router performs lightweight request
+# classification and does not serve model weights.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/vllm-project/semantic-router/extproc
+  tag: v0.3.0
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+persistence:
+  enabled: true
+  storageClassName: local-path
+  size: 10Gi
+
+startupProbe:
+  enabled: true
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 180
+
+router:
+  skipProcessing:
+    enabled: true
+
+config:
+  version: v0.3
+  listeners:
+    - name: grpc-50051
+      address: 0.0.0.0
+      port: 50051
+      timeout: 60s
+    - name: http-8080
+      address: 0.0.0.0
+      port: 8080
+      timeout: 60s
+  providers:
+    defaults:
+      default_model: qwen3:14b
+      default_reasoning_effort: medium
+      reasoning_families:
+        qwen3:
+          type: chat_template_kwargs
+          parameter: enable_thinking
+        deepseek:
+          type: chat_template_kwargs
+          parameter: thinking
+    models:
+      - name: qwen3:14b
+        provider_model_id: qwen3:14b
+        backend_refs:
+          - name: ollama
+            endpoint: ollama.inference.svc.cluster.local:11434
+            protocol: http
+            weight: 100
+      - name: qwen2.5-coder:14b
+        provider_model_id: qwen2.5-coder:14b
+        backend_refs:
+          - name: ollama
+            endpoint: ollama.inference.svc.cluster.local:11434
+            protocol: http
+            weight: 100
+      - name: deepseek-r1:14b
+        provider_model_id: deepseek-r1:14b
+        backend_refs:
+          - name: ollama
+            endpoint: ollama.inference.svc.cluster.local:11434
+            protocol: http
+            weight: 100
+      - name: phi4:14b
+        provider_model_id: phi4:14b
+        backend_refs:
+          - name: ollama
+            endpoint: ollama.inference.svc.cluster.local:11434
+            protocol: http
+            weight: 100
+      - name: gemma3:12b
+        provider_model_id: gemma3:12b
+        backend_refs:
+          - name: ollama
+            endpoint: ollama.inference.svc.cluster.local:11434
+            protocol: http
+            weight: 100
+  routing:
+    modelCards:
+      - name: qwen3:14b
+        modality: text
+        capabilities: [chat, general, reasoning]
+      - name: qwen2.5-coder:14b
+        modality: text
+        capabilities: [chat, code]
+      - name: deepseek-r1:14b
+        modality: text
+        capabilities: [chat, reasoning]
+      - name: phi4:14b
+        modality: text
+        capabilities: [chat, math]
+      - name: gemma3:12b
+        modality: text
+        capabilities: [chat, general]
+    signals:
+      keywords:
+        - name: coding
+          operator: OR
+          keywords: [code, coding, program, programming, debug, function, python, kubernetes, yaml]
+          case_sensitive: false
+        - name: math
+          operator: OR
+          keywords: [math, calculate, equation, algebra, calculus, derivative, theorem]
+          case_sensitive: false
+        - name: reasoning
+          operator: OR
+          keywords: [reason, analyze, analysis, prove, compare, carefully, step-by-step]
+          case_sensitive: false
+    decisions:
+      - name: coding
+        description: Route programming and infrastructure questions to the coding model.
+        priority: 30
+        rules:
+          operator: OR
+          conditions:
+            - type: keyword
+              name: coding
+        modelRefs:
+          - model: qwen2.5-coder:14b
+            use_reasoning: false
+      - name: math
+        description: Route quantitative questions to Phi.
+        priority: 20
+        rules:
+          operator: OR
+          conditions:
+            - type: keyword
+              name: math
+        modelRefs:
+          - model: phi4:14b
+            use_reasoning: true
+      - name: reasoning
+        description: Route explicit complex reasoning requests to DeepSeek.
+        priority: 10
+        rules:
+          operator: OR
+          conditions:
+            - type: keyword
+              name: reasoning
+        modelRefs:
+          - model: deepseek-r1:14b
+            use_reasoning: true
+      - name: default
+        description: Local general-purpose fallback.
+        priority: 1
+        rules:
+          operator: AND
+          conditions: []
+        modelRefs:
+          - model: qwen3:14b
+            use_reasoning: false
+
+  global:
+    router:
+      # Routing decisions here select complete physical models; advanced
+      # model-selection algorithms are intentionally deferred until the cloud
+      # fallback pool is introduced.
+      model_selection:
+        enabled: false
+    stores:
+      semantic_cache:
+        enabled: false
+      memory:
+        embedding_model: mmbert
+      vector_store:
+        embedding_model: mmbert
+    integrations:
+      tools:
+        enabled: false

@@ -1,0 +1,113 @@
+apiVersion: agent.k8s.elastic.co/v1alpha1
+kind: Agent
+metadata:
+  name: elastic-agent
+  namespace: elastic-stack
+spec:
+  version: 9.5.3
+  elasticsearchRefs:
+    - name: elasticsearch
+  daemonSet:
+    podTemplate:
+      spec:
+        automountServiceAccountToken: true
+        serviceAccountName: elastic-agent
+        containers:
+          - name: agent
+            securityContext:
+              runAsUser: 0
+            env:
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+  config:
+    id: homelab-kubernetes-observability
+    revision: 1
+    agent:
+      monitoring:
+        enabled: true
+        use_output: default
+        logs: true
+        metrics: true
+    inputs:
+      - id: homelab-kubernetes-metrics
+        name: kubernetes
+        revision: 1
+        type: kubernetes/metrics
+        use_output: default
+        meta:
+          package:
+            name: kubernetes
+            version: 0.2.8
+        data_stream:
+          namespace: k8s
+        streams:
+          - id: kubernetes/metrics-apiserver
+            data_stream:
+              dataset: kubernetes.apiserver
+              type: metrics
+            metricsets: [apiserver]
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            hosts:
+              - https://${env.KUBERNETES_SERVICE_HOST}:${env.KUBERNETES_SERVICE_PORT}
+            period: 30s
+            ssl.certificate_authorities:
+              - /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          - id: kubernetes/metrics-container
+            data_stream:
+              dataset: kubernetes.container
+              type: metrics
+            metricsets: [container]
+            add_metadata: true
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            hosts: ["https://${env.NODE_NAME}:10250"]
+            period: 10s
+            ssl.verification_mode: none
+          - id: kubernetes/metrics-event
+            data_stream:
+              dataset: kubernetes.event
+              type: metrics
+            metricsets: [event]
+            add_metadata: true
+            period: 10s
+          - id: kubernetes/metrics-node
+            data_stream:
+              dataset: kubernetes.node
+              type: metrics
+            metricsets: [node]
+            add_metadata: true
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            hosts: ["https://${env.NODE_NAME}:10250"]
+            period: 10s
+            ssl.verification_mode: none
+          - id: kubernetes/metrics-pod
+            data_stream:
+              dataset: kubernetes.pod
+              type: metrics
+            metricsets: [pod]
+            add_metadata: true
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            hosts: ["https://${env.NODE_NAME}:10250"]
+            period: 10s
+            ssl.verification_mode: none
+          - id: kubernetes/metrics-system
+            data_stream:
+              dataset: kubernetes.system
+              type: metrics
+            metricsets: [system]
+            add_metadata: true
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            hosts: ["https://${env.NODE_NAME}:10250"]
+            period: 10s
+            ssl.verification_mode: none
+          - id: kubernetes/metrics-volume
+            data_stream:
+              dataset: kubernetes.volume
+              type: metrics
+            metricsets: [volume]
+            add_metadata: true
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            hosts: ["https://${env.NODE_NAME}:10250"]
+            period: 10s
+            ssl.verification_mode: none

@@ -25,7 +25,9 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - postgres
+                - n8n
+                - -d
+                - n8n
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -34,7 +36,9 @@ spec:
               command:
                 - pg_isready
                 - -U
-                - postgres
+                - n8n
+                - -d
+                - n8n
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3

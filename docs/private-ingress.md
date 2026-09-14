@@ -117,6 +117,13 @@ curl -v https://automate.home.datalab.gg/
   Service + Ingress; `N8N_HOST`/`N8N_PROTOCOL`/`WEBHOOK_URL` env match the
   public URL). The temporary `test` validation namespace was removed after
   proving the path.
-- FileBrowser at `https://nas.home.datalab.gg` (`filebrowser/` manifests:
-  ClusterIP Service + Ingress; local `local-path` PVCs for `/srv` and
-  state until the NAS export is reachable from the cluster).
+- Nextcloud at `https://nas.home.datalab.gg` (`nextcloud/` manifests:
+  ClusterIP Service + Ingress, MariaDB, Redis, and an SMB CSI-backed PVC for
+  application/data storage). The old FileBrowser resources are removed.
+
+  The data PVC uses the dedicated `nextcloud` subdirectory of the NAS's
+  `NetworkShare` export at `192.168.0.242`; existing share contents are not
+  mounted as part of Nextcloud.
+- Kibana at `https://es.home.datalab.gg` (`elastic/` manifests; ECK-managed
+  Kibana service behind the same private Traefik ingress). Elasticsearch,
+  Kibana, and Elastic Agent are version 9.5.3.

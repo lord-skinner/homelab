@@ -1,0 +1,45 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: elasticsearch
+  namespace: elastic-stack
+spec:
+  version: 9.5.3
+  nodeSets:
+    - name: default
+      count: 3
+      config:
+        # Raspberry Pi nodes do not have vm.max_map_count tuned for Elasticsearch.
+        # This is the safe small-cluster setting; revisit if search workloads grow.
+        node.store.allow_mmap: false
+      podTemplate:
+        spec:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/cluster-name: elasticsearch
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: elasticsearch
+              env:
+                - name: ES_JAVA_OPTS
+                  value: -Xms1g -Xmx1g
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+                limits:
+                  cpu: 1500m
+                  memory: 2Gi
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 50Gi

@@ -1,0 +1,24 @@
+{
+  "index_patterns": ["metrics-*.prometheus-*"],
+  "priority": 500,
+  "composed_of": [
+    "metrics@tsdb-settings",
+    "metrics-prometheus@mappings",
+    "metrics-prometheus@settings",
+    "metrics@custom",
+    "metrics-prometheus@custom"
+  ],
+  "ignore_missing_component_templates": [
+    "metrics@custom",
+    "metrics-prometheus@custom"
+  ],
+  "template": {
+    "settings": {
+      "index.mode": "time_series",
+      "index.routing_path": ["labels.*"],
+      "index.number_of_shards": "3",
+      "index.number_of_replicas": "1"
+    }
+  },
+  "data_stream": {}
+}

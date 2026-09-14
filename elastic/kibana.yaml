@@ -1,0 +1,27 @@
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: kibana
+  namespace: elastic-stack
+spec:
+  version: 9.5.3
+  count: 1
+  elasticsearchRef:
+    name: elasticsearch
+  http:
+    # Traefik terminates TLS for the private ingress. Avoid proxying through
+    # ECK's self-signed backend certificate, which Traefik cannot validate.
+    tls:
+      selfSignedCertificate:
+        disabled: true
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi

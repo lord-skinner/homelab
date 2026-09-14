@@ -1,12 +1,11 @@
-# FileBrowser at https://nas.home.datalab.gg via the Tailscale->Traefik path.
-# TLS comes from Traefik's default wildcard certificate (TLSStore/default);
-# no per-app Certificate or Secret needed.
-# DNS already covers it via the wildcard *.home.datalab.gg record.
+# Nextcloud at https://nas.home.datalab.gg via Tailscale -> Traefik.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: filebrowser
-  namespace: filebrowser
+  name: nextcloud
+  namespace: nextcloud
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: nextcloud-nextcloud-headers@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
@@ -17,7 +16,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: filebrowser
+                name: nextcloud
                 port:
                   number: 80
   tls:

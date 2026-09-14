@@ -1,0 +1,25 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: smb-nas
+provisioner: smb.csi.k8s.io
+parameters:
+  source: //192.168.0.242/NetworkShare
+  # The CSI driver creates this directory on first bind. It keeps
+  # Nextcloud's internal files separate from the existing share contents.
+  subDir: nextcloud
+  onDelete: retain
+  csi.storage.k8s.io/provisioner-secret-name: nextcloud-smb-credentials
+  csi.storage.k8s.io/provisioner-secret-namespace: nextcloud
+  csi.storage.k8s.io/node-stage-secret-name: nextcloud-smb-credentials
+  csi.storage.k8s.io/node-stage-secret-namespace: nextcloud
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+mountOptions:
+  - vers=3.0
+  - dir_mode=0770
+  - file_mode=0660
+  - uid=33
+  - gid=33
+  - mfsymlinks

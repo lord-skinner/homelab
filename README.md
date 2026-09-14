@@ -16,7 +16,12 @@ Infrastructure as Code for a K3s cluster running on Raspberry Pi 5 nodes.
 ## Applications
 
 - **[n8n](n8n/)** — Workflow automation platform with PostgreSQL backend
-- **[filebrowser](filebrowser/)** — File management UI backed by local storage (NAS mount pending network access)
+- **[nextcloud](nextcloud/)** — Private file sync and collaboration service at `nas.home.datalab.gg`, backed by MariaDB, Redis, and a persistent volume
+- **[elastic](elastic/)** — Elasticsearch, Kibana, and Elastic Agent observability stack at `es.home.datalab.gg`
+
+## Operations
+
+- **[Cluster health and rollout verification](docs/cluster-health.md)** — non-mutating checks for nodes, workloads, storage, Prometheus, ingress backends, TLS smoke endpoints, restarts, and recurring error logs.
 
 ---
 

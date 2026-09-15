@@ -1,0 +1,14 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: home-ingress-buffering
+  namespace: kube-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: home-ingress
+  connection:
+    # Semantic Router and AI Gateway use buffered ext_proc bodies. OpenCode
+    # tool definitions can exceed Envoy's 32 KiB default stream buffer.
+    bufferLimit: 50Mi

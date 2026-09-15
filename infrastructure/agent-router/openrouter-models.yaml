@@ -1,0 +1,133 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: openrouter
+  namespace: inference
+spec:
+  endpoints:
+    - fqdn:
+        hostname: openrouter.ai
+        port: 443
+  tls:
+    autoSNIFromEndpointHostname: true
+    wellKnownCACertificates: System
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: openrouter-api-key
+  namespace: inference
+spec:
+  type: APIKey
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter-north-mini-code
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter-gemma4-26b
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter-nemotron-omni
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter-ling-vl
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter-nex-n25-pro
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openrouter-lfm25
+  apiKey:
+    secretRef:
+      name: openrouter-api-key
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter-north-mini-code
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+    prefix: /api/v1
+  backendRef:
+    name: openrouter
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter-gemma4-26b
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+    prefix: /api/v1
+  backendRef:
+    name: openrouter
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter-nemotron-omni
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+    prefix: /api/v1
+  backendRef:
+    name: openrouter
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter-ling-vl
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+    prefix: /api/v1
+  backendRef:
+    name: openrouter
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter-nex-n25-pro
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+    prefix: /api/v1
+  backendRef:
+    name: openrouter
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: openrouter-lfm25
+  namespace: inference
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+    prefix: /api/v1
+  backendRef:
+    name: openrouter
+    kind: Backend
+    group: gateway.envoyproxy.io

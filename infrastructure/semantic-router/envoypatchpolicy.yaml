@@ -31,7 +31,9 @@ spec:
               request_body_mode: BUFFERED
               request_trailer_mode: SKIP
               response_header_mode: SEND
-              response_body_mode: BUFFERED
+              # Routing is decided from the request. Do not parse arbitrary
+              # application or upstream error responses as LLM JSON.
+              response_body_mode: NONE
               response_trailer_mode: SKIP
     - name: semantic-router-extproc
       type: type.googleapis.com/envoy.config.cluster.v3.Cluster

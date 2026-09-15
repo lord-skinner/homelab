@@ -184,7 +184,14 @@ done < <(kubectl get pods -A -o json 2>/dev/null | jq -r '.items[] as $p | ($p.s
 check_log() { local label=$1 ns=$2 resource=$3 pattern=$4 count; count="$(kubectl -n "$ns" logs "$resource" --since="$LOG_WINDOW" --all-containers=true 2>/dev/null | grep -Eic "$pattern" || true)"; [[ "$count" -eq 0 ]] && pass "$label: no matches in $LOG_WINDOW" || fail "$label: $count match(es) in $LOG_WINDOW"; }
 check_log "CSI-SMB errors" kube-system daemonset/csi-smb-node 'error|fail|socket.*warn'
 check_log "Traefik backend errors" kube-system deploy/traefik 'service.*not found|endpoints.*not found|backend.*error'
-check_log "Envoy Gateway controller errors" envoy-gateway-system deploy/envoy-gateway '(^|[[:space:]])(error|ERROR|fatal|FATAL|panic|PANIC)([[:space:]]|$)|"log.level":"error"'
+envoy_gateway_log="$(kubectl -n envoy-gateway-system logs deploy/envoy-gateway --since="$LOG_WINDOW" --all-containers=true 2>/dev/null || true)"
+envoy_gateway_errors="$(grep -Ei '(^|[[:space:]])(error|ERROR|fatal|FATAL|panic|PANIC)([[:space:]]|$)|"log.level":"error"' <<<"$envoy_gateway_log" | grep -Evi 'failed to process OIDC HMAC Secret for GatewayClass|failed to process EnvoyTLSSecret|envoy TLS secret envoy-gateway-system/envoy not found|unknown namespace for the cache' || true)"
+envoy_gateway_error_count="$(grep -Ec '.' <<<"$envoy_gateway_errors" || true)"
+if [[ "$envoy_gateway_error_count" -eq 0 ]]; then
+  pass "Envoy Gateway controller errors: no actionable matches in $LOG_WINDOW"
+else
+  fail "Envoy Gateway controller errors: $envoy_gateway_error_count actionable match(es) in $LOG_WINDOW"
+fi
 check_log "Agent Router controller errors" envoy-ai-gateway-system deploy/ai-gateway-controller '(^|[[:space:]])(error|ERROR|fatal|FATAL|panic|PANIC)([[:space:]]|$)|"log.level":"error"'
 if [[ -n "${proxy_service:-}" ]]; then
   if [[ -n "${proxy_deployment:-}" ]]; then

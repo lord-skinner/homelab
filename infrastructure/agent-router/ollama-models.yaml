@@ -68,7 +68,7 @@ spec:
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
-  name: ollama-gemma3-12b
+  name: ollama-gemma4-latest
   namespace: inference
 spec:
   schema:
@@ -129,7 +129,55 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: gemma3:12b
+              value: gemma4:latest
       backendRefs:
-        - name: ollama-gemma3-12b
-          modelNameOverride: gemma3:12b
+        - name: ollama-gemma4-latest
+          modelNameOverride: gemma4:latest
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: cohere/north-mini-code:free
+      backendRefs:
+        - name: openrouter-north-mini-code
+          modelNameOverride: cohere/north-mini-code:free
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: google/gemma-4-26b-a4b-it:free
+      backendRefs:
+        - name: openrouter-gemma4-26b
+          modelNameOverride: google/gemma-4-26b-a4b-it:free
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+      backendRefs:
+        - name: openrouter-nemotron-omni
+          modelNameOverride: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: inclusionai/ling-3.0-flash-vl:free
+      backendRefs:
+        - name: openrouter-ling-vl
+          modelNameOverride: inclusionai/ling-3.0-flash-vl:free
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: nex-agi/nex-n2.5-pro:free
+      backendRefs:
+        - name: openrouter-nex-n25-pro
+          modelNameOverride: nex-agi/nex-n2.5-pro:free
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: liquid/lfm-2.5-2.6b:free
+      backendRefs:
+        - name: openrouter-lfm25
+          modelNameOverride: liquid/lfm-2.5-2.6b:free

@@ -49,7 +49,6 @@ The local routing policy is working end to end:
 Envoy Gateway → Semantic Router ExtProc → Agent Router → Ollama → selected model
 ```
 
-The five Ollama models remain available through the Agent Router, while the
-current automatic policy selects among four of them. `gemma3:12b` is registered
-and available but is not selected by a current keyword decision. Cloud models
-and fallback routing are intentionally deferred to a later phase.
+The five Ollama models remain available through the Agent Router, and the
+automatic policy now includes `gemma4:latest` for multimodal-oriented requests.
+Cloud models and fallback routing are intentionally deferred to a later phase.

@@ -1,7 +1,7 @@
 # vLLM Semantic Router ExtProc configuration for the existing Envoy Gateway.
 # Keep this release CPU-only; the router performs lightweight request
 # classification and does not serve model weights.
-replicaCount: 1
+replicaCount: 2
 
 image:
   repository: ghcr.io/vllm-project/semantic-router/extproc
@@ -82,11 +82,49 @@ config:
             endpoint: ollama.inference.svc.cluster.local:11434
             protocol: http
             weight: 100
-      - name: gemma3:12b
-        provider_model_id: gemma3:12b
+      - name: gemma4:latest
+        provider_model_id: gemma4:latest
         backend_refs:
           - name: ollama
             endpoint: ollama.inference.svc.cluster.local:11434
+            protocol: http
+            weight: 100
+      # Remote candidates are registered for explicit cloud-overflow policy,
+      # but are not in any active decision until availability and quality gates
+      # are met.
+      - name: cloud/north-mini-code
+        provider_model_id: cohere/north-mini-code:free
+        backend_refs:
+          - name: openrouter
+            endpoint: openrouter.ai:443
+            protocol: http
+            weight: 100
+      - name: cloud/nex-n25-pro
+        provider_model_id: nex-agi/nex-n2.5-pro:free
+        backend_refs:
+          - name: openrouter
+            endpoint: openrouter.ai:443
+            protocol: http
+            weight: 100
+      - name: cloud/lfm25
+        provider_model_id: liquid/lfm-2.5-2.6b:free
+        backend_refs:
+          - name: openrouter
+            endpoint: openrouter.ai:443
+            protocol: http
+            weight: 100
+      - name: cloud/ling-vl
+        provider_model_id: inclusionai/ling-3.0-flash-vl:free
+        backend_refs:
+          - name: openrouter
+            endpoint: openrouter.ai:443
+            protocol: http
+            weight: 100
+      - name: cloud/nemotron-omni
+        provider_model_id: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+        backend_refs:
+          - name: openrouter
+            endpoint: openrouter.ai:443
             protocol: http
             weight: 100
   routing:
@@ -103,11 +141,37 @@ config:
       - name: phi4:14b
         modality: text
         capabilities: [chat, math]
-      - name: gemma3:12b
+      - name: gemma4:latest
+        modality: omni
+        capabilities: [chat, general, multimodal, vision]
+      - name: cloud/north-mini-code
         modality: text
-        capabilities: [chat, general]
+        capabilities: [chat, code, tools, remote, fallback]
+      - name: cloud/nex-n25-pro
+        modality: omni
+        capabilities: [chat, code, tools, vision, remote, fallback]
+      - name: cloud/lfm25
+        modality: text
+        capabilities: [chat, extraction, rag, remote, fallback]
+      - name: cloud/ling-vl
+        modality: omni
+        capabilities: [chat, multimodal, vision, video, remote, fallback]
+      - name: cloud/nemotron-omni
+        modality: omni
+        capabilities: [chat, reasoning, multimodal, vision, audio, video, remote, fallback]
     signals:
+      input_modality:
+        - name: image_input
+          modality: image
+        - name: audio_input
+          modality: audio
+        - name: video_input
+          modality: video
       keywords:
+        - name: multimodal
+          operator: OR
+          keywords: [image, photo, picture, screenshot, diagram, chart, document, pdf, scan, visual, audio, sound, recording, speech, transcribe, translate]
+          case_sensitive: false
         - name: coding
           operator: OR
           keywords: [code, coding, program, programming, debug, function, python, kubernetes, yaml]
@@ -121,6 +185,17 @@ config:
           keywords: [reason, analyze, analysis, prove, compare, carefully, step-by-step]
           case_sensitive: false
     decisions:
+      - name: multimodal
+        description: Route image, audio, document, and translation requests to Gemma 4.
+        priority: 40
+        rules:
+          operator: OR
+          conditions:
+            - type: keyword
+              name: multimodal
+        modelRefs:
+          - model: gemma4:latest
+            use_reasoning: true
       - name: coding
         description: Route programming and infrastructure questions to the coding model.
         priority: 30
@@ -165,6 +240,10 @@ config:
             use_reasoning: false
 
   global:
+    services:
+      observability:
+        tracing:
+          enabled: false
     router:
       # Routing decisions here select complete physical models; advanced
       # model-selection algorithms are intentionally deferred until the cloud

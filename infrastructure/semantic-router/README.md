@@ -10,10 +10,15 @@ The initial policy is local-only and uses keyword decisions:
 - coding/infrastructure → `qwen2.5-coder:14b`
 - math → `phi4:14b`
 - explicit complex reasoning → `deepseek-r1:14b`
+- image/document/translation requests → `gemma4:latest`
 - default → `qwen3:14b`
 
 All five models use the internal `inference/ollama` service. Cloud backends and
-failover are intentionally not configured yet.
+failover are intentionally not configured yet. The Ollama host must support
+the current Gemma 4 manifest; Ollama 0.16.1 is too old.
+
+Semantic Router tracing is disabled because this cluster does not run a Jaeger
+collector. Prometheus metrics remain enabled.
 
 Install the router:
 

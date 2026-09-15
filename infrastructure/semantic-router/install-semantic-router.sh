@@ -22,6 +22,7 @@ helm upgrade --install "$RELEASE" "$CHART" \
 
 kubectl -n "$NAMESPACE" rollout status deployment/semantic-router --timeout=30m
 kubectl apply -f "$SCRIPT_DIR/podmonitor.yaml"
+kubectl apply -f "$SCRIPT_DIR/poddisruptionbudget.yaml"
 helm status "$RELEASE" --namespace "$NAMESPACE"
 
 echo "Semantic Router $VERSION is ready. Apply its Envoy ExtProc policy with:"

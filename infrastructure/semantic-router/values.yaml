@@ -160,13 +160,8 @@ config:
         modality: omni
         capabilities: [chat, reasoning, multimodal, vision, audio, video, remote, fallback]
     signals:
-      input_modality:
-        - name: image_input
-          modality: image
-        - name: audio_input
-          modality: audio
-        - name: video_input
-          modality: video
+      # v0.3.0 does not support the newer input_modality signal. Keep the
+      # validated keyword lane until the router image is upgraded and tested.
       keywords:
         - name: multimodal
           operator: OR
@@ -256,6 +251,7 @@ config:
       memory:
         embedding_model: mmbert
       vector_store:
+        enabled: false
         embedding_model: mmbert
     integrations:
       tools:

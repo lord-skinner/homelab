@@ -2,6 +2,8 @@
 
 Infrastructure as Code for a K3s cluster running on Raspberry Pi 5 nodes.
 
+Private platform documentation is available at [docs.home.datalab.gg](https://docs.home.datalab.gg/) when connected to the Tailscale network. The site provides the operational overview; component READMEs and manifests remain the detailed source of truth.
+
 ## Cluster
 
 | Node | Role | Architecture | RAM |

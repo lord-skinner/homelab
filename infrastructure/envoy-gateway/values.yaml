@@ -20,6 +20,7 @@ config:
             - nextcloud
             - elastic-stack
             - inference
+            - docs-site
 
 deployment:
   replicas: 1

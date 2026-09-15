@@ -129,11 +129,36 @@ else
   done < <(jq -r '.items[] | [.metadata.namespace,.metadata.name,([.status.conditions[]? | select(.type == "Accepted" and .status == "True")] | length > 0)] | @tsv' <<<"$ai_routes_json")
 fi
 
+openrouter_probe_json="$(kubectl -n inference get deployment openrouter-probe-exporter -o json 2>/dev/null || echo '{}')"
+if jq -e '(.status.availableReplicas // 0) == (.spec.replicas // 0) and (.spec.replicas // 0) > 0' <<<"$openrouter_probe_json" >/dev/null; then
+  pass "OpenRouter probe exporter is available"
+else
+  fail "OpenRouter probe exporter is unavailable"
+fi
+openrouter_policy_json="$(kubectl -n inference get backendtrafficpolicy openrouter-resilience -o json 2>/dev/null || echo '{}')"
+if jq -e '[.status.ancestors[]?.conditions[]? | select(.type == "Accepted" and .status == "True")] | length > 0' <<<"$openrouter_policy_json" >/dev/null; then
+  pass "OpenRouter resilience policy Accepted=True"
+else
+  fail "OpenRouter resilience policy is not Accepted=True"
+fi
+
 semantic_router_json="$(kubectl -n vllm-semantic-router-system get deployment semantic-router -o json 2>/dev/null || echo '{}')"
 if jq -e '(.status.availableReplicas // 0) == (.spec.replicas // 0) and (.spec.replicas // 0) > 0' <<<"$semantic_router_json" >/dev/null; then
   pass "vLLM Semantic Router is available"
 else
   fail "vLLM Semantic Router is unavailable"
+fi
+semantic_router_replicas="$(jq -r '.spec.replicas // 0' <<<"$semantic_router_json")"
+if [[ "$semantic_router_replicas" -ge 2 ]]; then
+  pass "vLLM Semantic Router has at least two replicas"
+else
+  fail "vLLM Semantic Router has fewer than two replicas"
+fi
+semantic_router_pdb_json="$(kubectl -n vllm-semantic-router-system get pdb semantic-router -o json 2>/dev/null || echo '{}')"
+if jq -e '.spec.minAvailable == 1 and (.status.currentHealthy // 0) >= 1' <<<"$semantic_router_pdb_json" >/dev/null; then
+  pass "vLLM Semantic Router disruption budget protects one replica"
+else
+  fail "vLLM Semantic Router disruption budget is missing or unsatisfied"
 fi
 semantic_router_endpoints="$(kubectl -n vllm-semantic-router-system get endpoints semantic-router -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' 2>/dev/null || true)"
 [[ -n "$semantic_router_endpoints" ]] && pass "Semantic Router gRPC Service has ready endpoints" || fail "Semantic Router gRPC Service has no ready endpoints"
@@ -203,10 +228,13 @@ fi
 check_log "Elastic Agent export failures" elastic-stack daemonset/elastic-agent-agent 'export.*fail|failed.*export|export.*error'
 
 section "Application smoke checks with certificate validation"
-for host in automate.home.datalab.gg nas.home.datalab.gg es.home.datalab.gg; do
+for host in automate.home.datalab.gg nas.home.datalab.gg es.home.datalab.gg docs.home.datalab.gg; do
   status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 20 "https://$host/" 2>/dev/null || echo 000)"
   [[ "$status" =~ ^[23][0-9][0-9]$ ]] && pass "$host TLS verified and returned HTTP $status" || fail "$host returned HTTP $status or failed certificate validation"
 done
+
+docs_endpoints="$(kubectl -n docs-site get endpoints docs -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' 2>/dev/null || true)"
+[[ -n "$docs_endpoints" ]] && pass "Docs site Service has ready endpoints" || fail "Docs site Service has no ready endpoints"
 
 section "Filebrowser removal check"
 kubectl get namespace filebrowser >/dev/null 2>&1 && fail "namespace filebrowser still exists" || pass "namespace filebrowser is absent"

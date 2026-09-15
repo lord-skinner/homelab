@@ -17,9 +17,13 @@ helm upgrade --install "$RELEASE" "$CHART" \
   --namespace "$NAMESPACE" \
   --version "$VERSION" \
   --values "$SCRIPT_DIR/values.yaml" \
-  --wait \
   --timeout 30m
 
+# The cluster cannot temporarily schedule a third router pod during a rolling
+# update. Keep two steady-state replicas, but update one at a time with no
+# surge so Helm upgrades do not strand a pending pod.
+kubectl -n "$NAMESPACE" patch deployment semantic-router --type='strategic' \
+  -p '{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxSurge":0,"maxUnavailable":1}}}}'
 kubectl -n "$NAMESPACE" rollout status deployment/semantic-router --timeout=30m
 kubectl apply -f "$SCRIPT_DIR/podmonitor.yaml"
 kubectl apply -f "$SCRIPT_DIR/poddisruptionbudget.yaml"

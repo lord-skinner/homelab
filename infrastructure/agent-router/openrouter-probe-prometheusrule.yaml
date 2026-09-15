@@ -1,0 +1,27 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: openrouter-probe
+  namespace: inference
+  labels:
+    app.kubernetes.io/part-of: llm-gateway
+spec:
+  groups:
+    - name: openrouter-routing
+      rules:
+        - alert: OpenRouterCandidateUnavailable
+          expr: openrouter_model_probe_consecutive_failures >= 3
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: OpenRouter candidate {{ $labels.model }} is unavailable
+            description: The candidate has failed three or more consecutive probes and must not be promoted to automatic fallback.
+        - alert: OpenRouterCandidateSlow
+          expr: openrouter_model_probe_latency_seconds > 20 and openrouter_model_probe_success == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: OpenRouter candidate {{ $labels.model }} is slow
+            description: The successful probe latency is above the general fallback target of 20 seconds.

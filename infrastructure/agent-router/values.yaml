@@ -1,5 +1,5 @@
-# Agent Router v1.1.0. The controller watches the namespace containing the
-# declarative model catalog and routes; Envoy Gateway watches inference too.
+# Agent Router v1.1.0. The controller watches the model catalog and the
+# namespaces served by the shared Gateway so its extension cache is coherent.
 controller:
       watch:
         namespaces:
@@ -8,3 +8,4 @@ controller:
           - n8n
           - nextcloud
           - elastic-stack
+          - docs-site

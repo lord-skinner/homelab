@@ -11,6 +11,7 @@ spec:
     - automate.home.datalab.gg
     - nas.home.datalab.gg
     - es.home.datalab.gg
+    - docs.home.datalab.gg
   rules:
     - filters:
         - type: RequestRedirect

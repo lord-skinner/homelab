@@ -25,10 +25,9 @@ Apply the local model backends and route:
 ./infrastructure/agent-router/apply-ollama-models.sh
 ```
 
-The route is intentionally limited to the five local models. There is no cloud
-fallback yet. A future change can add cloud `AIServiceBackend` resources and
-ordered backend selection, followed by vLLM Semantic Router as an Envoy
-External Processing decision layer for local-first/task-aware routing.
+The five local models remain the automatic default. Cloud models are registered
+as explicit Agent Router routes, while vLLM Semantic Router keeps them outside
+automatic selection until their quality and availability gates are met.
 
 ## OpenRouter free models
 
@@ -39,6 +38,8 @@ without changing Semantic Router fallbacks:
 - `google/gemma-4-26b-a4b-it:free` — multimodal text/image/video model
 - `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` — multimodal reasoning model
 - `inclusionai/ling-3.0-flash-vl:free` — vision-language model
+- `nex-agi/nex-n2.5-pro:free` — visual coding-agent candidate
+- `liquid/lfm-2.5-2.6b:free` — extraction/RAG efficiency candidate
 
 The catalog was selected from OpenRouter's zero-price model list on 2026-09-14;
 free model availability and provider rate limits can change. The API key is
@@ -52,7 +53,8 @@ export OPENROUTER_API_KEY='...'
 The script creates the `inference/openrouter-api-key` Secret, configures HTTPS
 to `openrouter.ai`, and applies the provider-specific Gateway routes. Clients
 can select a provider explicitly with `x-ai-eg-model`; automatic `model: auto`
-routing remains local-only until cloud fallback policy is deliberately added.
+routing remains local-only until cloud fallback policy is deliberately enabled
+and qualified.
 
 ### Complete free-model catalog
 
@@ -112,3 +114,16 @@ the Gateway is Tailscale-exposed.
 See [openrouter-model-evaluation.md](openrouter-model-evaluation.md) for the
 full live inventory, probe results, capability assessment, and staged plan for
 reducing redundancy and adding high-availability cloud fallbacks.
+
+Prometheus alerts after sustained candidate failures or successful probe
+latency above 20 seconds, keeping promotion decisions explicit.
+The generated AI route also uses bounded retries for transient 429/5xx
+responses, a concurrency circuit breaker, and passive endpoint ejection. This
+policy applies to the generated route as a whole; it is deliberately not a
+model-promotion or automatic cloud-fallback policy.
+
+The approved five-model remote candidate pool is continuously probed every
+five minutes by `openrouter-probe-exporter`. Prometheus records per-model
+success, HTTP status, latency, consecutive failures, and the provider reported
+by OpenRouter. These measurements inform the availability gates; they do not
+enable cloud fallback automatically.

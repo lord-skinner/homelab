@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docs
+  namespace: docs-site
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: docs
+  template:
+    metadata:
+      labels:
+        app: docs
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: site
+              mountPath: /usr/share/nginx/html
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: site
+          configMap:
+            name: homelab-docs
+        - name: nginx-config
+          configMap:
+            name: homelab-docs-nginx
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homelab-docs-nginx
+  namespace: docs-site
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      server_name _;
+      root /usr/share/nginx/html;
+      index index.html;
+      location / { try_files $uri $uri/ /index.html; }
+      location = /healthz { return 200 "ok\n"; add_header Content-Type text/plain; }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docs
+  namespace: docs-site
+spec:
+  selector:
+    app: docs
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
